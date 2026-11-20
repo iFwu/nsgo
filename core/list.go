@@ -444,7 +444,7 @@ func (t *Tree) mountList(cx *Scope, parent *node, l List) {
 				keys[i] = l.Key(i)
 			}
 			if at, removed, inserted, ok := listSplice(ln.keys, keys); ok && len(ln.keys) == st.count {
-				t.spliceList(ln, at, removed, inserted)
+				t.spliceList(ln, at, removed, inserted, listKept(ln.keys, keys, at, removed, inserted))
 			}
 			ln.keys = keys
 		}
@@ -459,23 +459,28 @@ func (t *Tree) mountList(cx *Scope, parent *node, l List) {
 	t.lists = append(t.lists, v)
 }
 
-// spliceList moves the list's measurements and cells with the rows that
-// stay as removed rows at at are replaced by inserted ones.
-func (t *Tree) spliceList(ln *listNode, at, removed, inserted int) {
-	ln.st.splice(at, removed, inserted)
+// spliceList moves the list's measurements and cells with the rows that stay as removed rows at at are replaced by inserted ones, the kept ones among them (listKept) included.
+func (t *Tree) spliceList(ln *listNode, at, removed, inserted int, kept map[int]int) {
+	ln.st.splice(at, removed, inserted, kept)
 	cells := ln.byIndex
 	ln.byIndex = make(map[int]*listCell, len(cells))
 	for i, c := range cells {
+		to, stays := kept[i]
 		switch {
 		case i < at:
-			ln.byIndex[i] = c
+			to, stays = i, true
 		case i >= at+removed:
-			c.index = i - removed + inserted
-			c.pos.index.Set(c.index)
-			ln.byIndex[c.index] = c
-		default:
-			ln.spare(c)
+			to, stays = i-removed+inserted, true
 		}
+		if !stays {
+			ln.spare(c)
+			continue
+		}
+		if to != i {
+			c.index = to
+			c.pos.index.Set(to)
+		}
+		ln.byIndex[to] = c
 	}
 	ln.loadAt = -1
 }

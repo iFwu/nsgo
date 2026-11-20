@@ -2,6 +2,7 @@ package core
 
 import (
 	"math"
+	"slices"
 	"testing"
 )
 
@@ -126,12 +127,12 @@ func TestListStateSplicesAndPins(t *testing.T) {
 	l.offset = 1000
 	l.measured(25, 80)
 	before := l.itemAt(20) - l.offset
-	l.splice(0, 0, 3)
+	l.splice(0, 0, 3, nil)
 	if l.count != 103 || l.itemAt(23)-l.offset != before || l.takeSpliceAnchor() != 150 || l.rowExtent(28) != 80 {
 		t.Errorf("after a splice above: count %d, anchor kept %v", l.count, l.itemAt(23)-l.offset == before)
 	}
 	off := l.offset
-	l.splice(90, 2, 0)
+	l.splice(90, 2, 0, nil)
 	if l.offset != off {
 		t.Errorf("a splice below moved the list")
 	}
@@ -154,6 +155,34 @@ func TestListStateSplicesAndPins(t *testing.T) {
 	l.movedTo(4000, true)
 	if l.pin != nil {
 		t.Error("the user scrolled away and the pin stayed")
+	}
+}
+
+// An item between two changes, which one splice replaces, keeps its measurement, and as the first visible item its place on screen.
+func TestListStateSpliceKeepsAnItemBetweenTwoChanges(t *testing.T) {
+	l := testList(100, 50, 400)
+	l.measured(20, 80)
+	l.offset = l.itemAt(20) + 10
+	old := make([]any, 100)
+	for i := range old {
+		old[i] = i
+	}
+	// Item 19 is replaced by two new ones, and a third arrives after item 20.
+	next := slices.Concat(old[:19], []any{-1, -2, 20, -3}, old[21:])
+	at, removed, inserted, _ := listSplice(old, next)
+	kept := listKept(old, next, at, removed, inserted)
+	if at != 19 || removed != 2 || inserted != 4 || len(kept) != 1 || kept[20] != 21 {
+		t.Fatalf("splice %d %d %d, kept %v", at, removed, inserted, kept)
+	}
+	l.splice(at, removed, inserted, kept)
+	if got := l.itemAt(21) - l.offset; got != -10 {
+		t.Errorf("item 20 is %v from the viewport's start, want -10", got)
+	}
+	if a := l.takeSpliceAnchor(); a != 50 {
+		t.Errorf("splice anchor %v, want 50", a)
+	}
+	if got := l.rowExtent(21); got != 80 {
+		t.Errorf("item 20 is %v long, want its measured 80", got)
 	}
 }
 
@@ -220,7 +249,7 @@ func TestListStateInvertedLoadingAtStartKeepsTheVisibleRows(t *testing.T) {
 	onScreen := func(l *listState, i int) Points { return l.toContent(l.itemAt(i), 50) - l.offset }
 	// Newer items arrive before item 0: the rows on screen stay.
 	before := onScreen(l, 4)
-	l.splice(0, 0, 4)
+	l.splice(0, 0, 4, nil)
 	if d := l.takeSpliceAnchor() + l.anchorEnd(); d != 0 || onScreen(l, 8) != before {
 		t.Errorf("splice scrolled %v; item 8 at %v, want %v", d, onScreen(l, 8), before)
 	}
@@ -236,7 +265,7 @@ func TestListStateInvertedLoadingAtStartKeepsTheVisibleRows(t *testing.T) {
 	c := testList(100, 50, 400)
 	c.inverted, c.loadsAtStart = true, true
 	c.anchorEnd()
-	c.splice(0, 0, 1)
+	c.splice(0, 0, 1, nil)
 	c.takeSpliceAnchor()
 	c.anchorEnd()
 	if n := c.naturalOffset(); n != 0 {
@@ -249,7 +278,7 @@ func TestListStateInvertedLoadingAtStartKeepsTheVisibleRows(t *testing.T) {
 	d.inverted = true
 	d.anchorEnd()
 	d.offset = 5000 - 400 - 200
-	d.splice(0, 0, 4)
+	d.splice(0, 0, 4, nil)
 	if a := d.takeSpliceAnchor(); a != 0 {
 		t.Errorf("splice anchor %v, want none", a)
 	}
