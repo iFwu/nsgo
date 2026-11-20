@@ -14,6 +14,7 @@
 - Free a removed `List`, instead of the tree's list of the lists it updates keeping it past its new end, and through it the whole subtree it was in, while another list stays.
 - Let a `List`'s row whose views have a closed tooltip go once it scrolls away, instead of holding it as a row with an open overlay is held, which kept every such row mounted, and in memory, for as long as the list stayed.
 - Keep a multiline `Input`'s caret, its selection and the rects an input method places its candidates by to the font's ascent and descent on macOS when `Style.LineHeight` is taller than the font, instead of reaching up through the extra height, with the glyphs where they were.
+- Drag a scroll view in `nsgotest` by the distance `Scroll` asks for from wherever the content is, as a finger does, instead of on to the offset it started for, which undid the scroll by a `List` keeping its visible rows in place as rows above them turned out shorter than estimated, and moved those rows instead.
 
 ## [0.2.0] - 2026-11-19
 
