@@ -888,7 +888,8 @@ func (t *Tree) heldRows(ln *listNode, count int) []int {
 	hosts := append([]*node{t.view}, t.frames...)
 	for k := 0; k < len(hosts); k++ {
 		for _, o := range hosts[k].hosted {
-			if o.deleted {
+			if o.deleted || o.style.Display == DisplayNone {
+				// A hidden overlay, such as a closed tooltip kept for its description, holds no row.
 				continue
 			}
 			hosts = append(hosts, o)

@@ -376,3 +376,41 @@ func TestListInItsParentsViewport(t *testing.T) {
 		t.Errorf("page at %v after ScrollToIndex(100), want 5300", page.Offset.Y)
 	}
 }
+
+// A row holding an open overlay keeps its cell when it scrolls away, and a
+// row whose overlay is closed lets it go: a view's closed tooltip, kept
+// mounted for its description, holds no row.
+func TestListHoldsARowWhileItsOverlayShows(t *testing.T) {
+	var open *core.Signal[bool]
+	a := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+		open = core.NewSignal(cx, false)
+		return core.List{TestID: "list", Style: core.Style{Height: core.Pt(400)},
+			Count: func() int { return 200 }, EstimatedSize: 40,
+			Row: func(cx *core.Scope, r core.ListRow) core.Node {
+				ref := &core.Ref{}
+				return core.View{Ref: ref, Tooltip: core.Text{Content: "tip"}, Style: core.Style{Height: core.Pt(40)},
+					Children: []core.Node{
+						core.Text{ContentFunc: func() string { return rowText(r.Index()) }},
+						core.Show{When: func() bool { return r.Index() == 1 && open.Get() }, Then: func(*core.Scope) core.Node {
+							return core.Overlay{Anchor: ref, TestID: "menu", Children: []core.Node{core.Text{Content: "menu"}}}
+						}},
+					}}
+			}}
+	})
+	open.Set(true)
+	a.Settle()
+	for _, y := range []core.Points{2000, 4000, 7600} {
+		a.ScrollTo("id:list", core.Point{Y: y})
+	}
+	if _, ok := cell(a, 0); ok {
+		t.Error("row 0 keeps its cell 7,600 points past it, held by its closed tooltip")
+	}
+	if _, ok := cell(a, 1); !ok || !a.Exists("id:menu") {
+		t.Errorf("row 1 lets its cell go with its menu open (row shown %v)", ok)
+	}
+	open.Set(false)
+	a.Settle()
+	if _, ok := cell(a, 1); ok {
+		t.Error("row 1 keeps its cell once its menu closed")
+	}
+}

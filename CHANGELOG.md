@@ -137,6 +137,7 @@
 - Pull a scroll view's offset back to its end in `nsgotest` when its content shrinks or its viewport grows past it, and report where it went, as macOS, Windows, Linux, Android and the web do, instead of leaving it past the end (#1020 by @iFwu).
 - Free a removed `Overlay`, `Modal`, `Position: Fixed` view or `Tooltip` bubble instead of the view hosting it keeping it, and through it the whole subtree it was in, for the life of the window, so rebuilding a view with a tooltip no longer grows memory (#1006 by @iFwu).
 - Pass `RequestAnimationFrame` callbacks the display's frame time on macOS, iOS, Android, the web, Linux, Windows, HarmonyOS and watchOS rather than when the engine got to the frame (on HarmonyOS only from a host built with the OpenHarmony SDK, as the committed host still gives the engine's clock until it is rebuilt), and tick Linux's animations from the display's `GdkFrameClock` rather than a 16 ms timer (#1048 by @houko).
+- Let a `List`'s row whose views have a closed tooltip go once it scrolls away, instead of holding it as a row with an open overlay is held, which kept every such row mounted, and in memory, for as long as the list stayed (#NNN by @iFwu).
 
 ## [0.2.0] - 2026-11-19
 
