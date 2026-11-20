@@ -102,6 +102,38 @@ func TestKeyedListJumpsToARowInsertedAboveTheViewport(t *testing.T) {
 	}
 }
 
+// A row between two changes in one update, as a chat's open question with a reply arriving above it and a live row below it, keeps its cell: what it holds, such as a field's focus and its input method's composition, stays.
+func TestKeyedListKeepsARowBetweenTwoChanges(t *testing.T) {
+	var ids *core.Signal[[]int]
+	a := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+		ids = core.NewSignalFunc(cx, []int{0, 1, 2}, nil)
+		return core.List{TestID: "list", Style: core.Style{Height: core.Pt(400)},
+			Count: func() int { return len(ids.Get()) }, Key: func(i int) any { return ids.Get()[i] },
+			EstimatedSize: 40, Row: func(cx *core.Scope, r core.ListRow) core.Node {
+				id := core.NewMemo(cx, func() int { return ids.Get()[r.Index()] })
+				return core.Dynamic(func(*core.Scope) core.Node {
+					if id.Get() == 1 {
+						return core.Input{TestID: "field", Style: core.Style{Height: core.Pt(40)}}
+					}
+					return core.Text{Content: rowText(id.Get()), Style: core.Style{Height: core.Pt(40)}}
+				})
+			}}
+	})
+	a.Type("id:field", "op")
+	a.Compose("id:field", "す")
+	before := a.Find("id:field")
+	ids.Set([]int{0, 3, 1, 4, 2})
+	a.Settle()
+	after := a.Find("id:field")
+	if after.ID != before.ID || !after.Focused || after.Composing != "す" {
+		t.Errorf("row 1's field was built again or lost its input: id %v -> %v, focused %v, composing %q",
+			before.ID, after.ID, after.Focused, after.Composing)
+	}
+	if !a.Exists("text:"+rowText(3)) || !a.Exists("text:"+rowText(4)) {
+		t.Errorf("the rows that arrived do not show\n%s", a.Dump())
+	}
+}
+
 func makeIDs(n, from int) []int {
 	out := make([]int, n)
 	for i := range out {

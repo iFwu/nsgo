@@ -281,10 +281,8 @@ func (s *listState) setSticky(indices []int) {
 	s.sticky = slices.Compact(sticky)
 }
 
-// splice replaces removed items at at by inserted new ones. Measurements
-// follow the items that stay, and when the change is above the first
-// visible item the visible content keeps its place (spliceAnchor).
-func (s *listState) splice(at, removed, inserted int) {
+// splice replaces removed items at at by inserted new ones; kept maps the replaced items that come back among the inserted ones to their new indices (listKept). Measurements follow the items that stay, and when the change is above the first visible item, or that item stays, the visible content keeps its place (spliceAnchor).
+func (s *listState) splice(at, removed, inserted int, kept map[int]int) {
 	at = min(at, s.count)
 	removed = min(removed, s.count-at)
 	if removed == 0 && inserted == 0 {
@@ -308,11 +306,17 @@ func (s *listState) splice(at, removed, inserted int) {
 	for i := range fresh {
 		fresh[i] = nan
 	}
+	for from, to := range kept {
+		fresh[to-at] = s.sizes[from]
+	}
 	s.sizes = slices.Replace(s.sizes, at, at+removed, fresh...)
 	s.count = s.count - removed + inserted
 	s.rebuild()
-	if anchored && anchor >= at+removed {
-		moved := anchor - removed + inserted
+	moved, stays := anchor-removed+inserted, anchor >= at+removed
+	if to, ok := kept[anchor]; ok {
+		moved, stays = to, true
+	}
+	if anchored && stays {
 		if s.inverted {
 			// anchorEnd brings the natural offset back to what it was;
 			// the visible rows need it moved as far as they did.
@@ -766,6 +770,30 @@ func listSplice(old, new []any) (at, removed, inserted int, changed bool) {
 	}
 	removed, inserted = len(old)-at-end, len(new)-at-end
 	return at, removed, inserted, removed > 0 || inserted > 0
+}
+
+// listKept maps the items a splice of old into new replaces whose keys come back among the inserted ones, as an item between two changes, from their old indices to their new ones; nil for none.
+func listKept(old, new []any, at, removed, inserted int) map[int]int {
+	if removed == 0 || inserted == 0 {
+		return nil
+	}
+	in := make(map[any]int, inserted)
+	for j := at + inserted - 1; j >= at; j-- {
+		in[new[j]] = j
+	}
+	var kept map[int]int
+	for i := at; i < at+removed; i++ {
+		j, ok := in[old[i]]
+		if !ok {
+			continue
+		}
+		if kept == nil {
+			kept = map[int]int{}
+		}
+		kept[i] = j
+		delete(in, old[i])
+	}
+	return kept
 }
 
 func abs32(p Points) Points {
