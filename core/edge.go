@@ -104,6 +104,7 @@ func (t *Tree) markEdgeScrolls() {
 		e.Extent = max(e.Extent, reach)
 		e.Bars = append(e.Bars, b.id)
 	}
+	clear(t.edgeBars[len(live):])
 	t.edgeBars = live
 	line := edgeLine[0]
 	if t.root.Env().dark.GetUntracked() {
@@ -115,6 +116,7 @@ func (t *Tree) markEdgeScrolls() {
 			order = append(order, s)
 		}
 	}
+	clear(t.edgeScrolls)
 	t.edgeScrolls = t.edgeScrolls[:0]
 	for _, s := range order {
 		edges := measured[s]
