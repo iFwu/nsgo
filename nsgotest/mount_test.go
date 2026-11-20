@@ -50,6 +50,38 @@ func TestRefFocusInUnplacedHolder(t *testing.T) {
 	}
 }
 
+// As macOS does, content that shrinks under a scroll at its end, or a viewport that grows past it, pulls the offset back to the new end, and the app hears where it went.
+func TestScrollPastItsEndComesBackToIt(t *testing.T) {
+	scroll := &core.Ref{}
+	var content, viewport *core.Signal[core.Points]
+	var heard core.Points
+	app := Start(t, func(cx *core.Scope) core.Node {
+		content, viewport = core.NewSignal(cx, core.Points(500)), core.NewSignal(cx, core.Points(100))
+		return core.Scroll{
+			TestID: "scroll", Ref: scroll,
+			OnScroll:  func(e core.ScrollEvent) { heard = e.Offset.Y },
+			StyleFunc: func() core.Style { return core.Style{Height: core.Pt(viewport.Get())} },
+			Children:  []core.Node{core.View{StyleFunc: func() core.Style { return core.Style{Height: core.Pt(content.Get())} }}},
+		}
+	})
+	app.Post(func() { scroll.ScrollToEnd(false) })
+	app.Settle()
+	for _, step := range []struct {
+		name    string
+		change  func()
+		wantEnd core.Points
+	}{
+		{"content shrank", func() { content.Set(300) }, 200},
+		{"viewport grew", func() { viewport.Set(150) }, 150},
+	} {
+		app.Post(step.change)
+		app.Settle()
+		if got := app.Find("id:scroll").Offset.Y; got != step.wantEnd || heard != step.wantEnd {
+			t.Errorf("%s: offset %v, the app heard %v, want the new end %v", step.name, got, heard, step.wantEnd)
+		}
+	}
+}
+
 func TestMountFailsWithItemAndMissingView(t *testing.T) {
 	for _, item := range []struct {
 		kind driver.ItemKind
