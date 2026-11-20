@@ -255,8 +255,10 @@ func (t *Tree) setText(cx *Scope, n *node, v Text) {
 	for _, c := range n.children {
 		t.discard(c)
 	}
+	clear(n.children)
 	n.children = n.children[:0]
 	t.childrenChanged(n)
+	clear(tn.spans)
 	tn.spans, tn.attachments = tn.spans[:0], 0
 	for _, sp := range spans {
 		style := sp.Style
