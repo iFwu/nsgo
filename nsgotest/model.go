@@ -39,9 +39,10 @@ type View struct {
 	Content driver.Size  // a scroll view's content
 	Offset  driver.Point // and its offset
 	// Applied counts the ItemScrollTo and ItemScrollBy items the scroll
-	// view applied, which its reports carry; Sticky are its sticky
-	// cells.
+	// view applied, which its reports carry, and Scrolls are those
+	// items, oldest first; Sticky are its sticky cells.
 	Applied uint32
+	Scrolls []ScrollCommand
 	Sticky  []driver.StickyCell
 	// Scroll is a scroll view's configuration, and ZoomScale its zoom
 	// (0 until it zooms).
@@ -160,6 +161,14 @@ func (a *App) Animated(selector string) driver.ViewStyle {
 type NativeCommand struct {
 	Name string
 	Args any
+}
+
+// ScrollCommand is a scroll an app asked a scroll view for: to Point, or
+// by it when By, animated or not.
+type ScrollCommand struct {
+	Point    driver.Point
+	By       bool
+	Animated bool
 }
 
 // WebCommand is a command a web view received, with its message or script in Value and any structured argument in Data (such as WebLoad's WebSource).
@@ -544,6 +553,7 @@ func (a *App) apply(b *driver.MountBatch) {
 			a.setFocus(v, false)
 		case driver.ItemScrollTo, driver.ItemScrollBy:
 			v.Applied++
+			v.Scrolls = append(v.Scrolls, ScrollCommand{Point: it.Point, By: it.Kind == driver.ItemScrollBy, Animated: it.Animated})
 			if it.Kind == driver.ItemScrollBy {
 				v.Offset.X += it.Point.X
 				v.Offset.Y += it.Point.Y
@@ -826,8 +836,8 @@ func (a *App) apply(b *driver.MountBatch) {
 			}
 		}
 	}
-	// As the platforms do, content that shrank or a viewport that grew under an offset past the new end pulls it back
-	// to the end, once the rest of the batch (the ScrollBy keeping the visible content in place) is applied.
+	// As macOS does, content that shrank or a viewport that grew under an offset past the new end pulls it back to
+	// the end, once the rest of the batch (the ScrollBy keeping the visible content in place) is applied.
 	for _, v := range resized {
 		if v.Kind != driver.KindScroll || v.Scroll.Zooms() || a.views[v.ID] != v {
 			continue

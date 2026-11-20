@@ -6,10 +6,11 @@
 - Free a removed view that was laid out on its own as a relayout boundary, instead of the queue of boundaries keeping it, and through it the whole subtree it was in, until a later queue as long reuses its slot.
 - Draw a multiline `Input`'s lines `Style.LineHeight` apart on macOS, its placeholder's included, with their glyphs where a `Text` of its style puts them, as the engine lays the input out, instead of at the font's own height.
 - Land a `List`'s scroll to a row, or to its end, where it asks when rows were inserted, removed or measured above the viewport in the same update, instead of shifted by the scroll that would have kept the visible rows in place.
-- Pull a scroll view's offset back to its end in `nsgotest` when its content shrinks or its viewport grows past it, and report where it went, as the platforms do, instead of leaving it past the end.
+- Pull a scroll view's offset back to its end in `nsgotest` when its content shrinks or its viewport grows past it, and report where it went, as macOS does, instead of leaving it past the end.
 - Free the views a view's children, a `Dynamic`, an `Each` or a text's attachments drop, and those last told their layout, instead of the lists that held them keeping them past their new end, and through each the whole subtree it was in, until the list grows back that long.
 - Free an absolutely positioned or fixed view its containing block no longer has, instead of the containing block's list of the boxes it positions keeping it past its new end, and through it the whole subtree it was in, until the containing block positions as many again.
 - Free a removed `EdgeBar` view and a removed scroll view a bar was over, instead of the lists of bars and of the scroll views they reach into keeping them past their new end, and through each the whole subtree it was in, while another bar stays.
+- Record in `nsgotest` the scrolls an app asks a scroll view for, to a point or by a distance and whether animated, in `View.Scrolls`, as `WebCommands` and `Seeks` record what a web view and a video were asked.
 
 ## [0.2.0] - 2026-11-19
 

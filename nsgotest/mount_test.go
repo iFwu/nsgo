@@ -3,6 +3,7 @@ package nsgotest
 import (
 	"fmt"
 	"image"
+	"slices"
 	"strings"
 	"testing"
 
@@ -50,8 +51,8 @@ func TestRefFocusInUnplacedHolder(t *testing.T) {
 	}
 }
 
-// As the platforms do, content that shrinks under a scroll at its end, or a viewport that grows past it, pulls the
-// offset back to the new end, and the app hears where it went.
+// As macOS does, content that shrinks under a scroll at its end, or a viewport that grows past it, pulls the offset
+// back to the new end, and the app hears where it went.
 func TestScrollPastItsEndComesBackToIt(t *testing.T) {
 	scroll := &core.Ref{}
 	var content, viewport *core.Signal[core.Points]
@@ -80,6 +81,36 @@ func TestScrollPastItsEndComesBackToIt(t *testing.T) {
 		if got := app.Find("id:scroll").Offset.Y; got != step.wantEnd || heard != step.wantEnd {
 			t.Errorf("%s: offset %v, the app heard %v, want the new end %v", step.name, got, heard, step.wantEnd)
 		}
+	}
+}
+
+// A scroll view records the scrolls the app asks it for: a Ref's scroll to a point, and the scroll by a distance a
+// List sends to keep its visible rows in place as rows land above them.
+func TestScrollRecordsTheScrollsTheAppAsksFor(t *testing.T) {
+	ids := func(n, from int) []int {
+		out := make([]int, n)
+		for i := range out {
+			out[i] = from + i
+		}
+		return out
+	}
+	ref := &core.Ref{}
+	var rows *core.Signal[[]int]
+	app := Start(t, func(cx *core.Scope) core.Node {
+		rows = core.NewSignalFunc(cx, ids(100, 0), nil)
+		return core.List{TestID: "list", Ref: ref, Style: core.Style{Height: core.Pt(400)},
+			Count: func() int { return len(rows.Get()) }, Key: func(i int) any { return rows.Get()[i] },
+			EstimatedSize: 40, Row: func(*core.Scope, core.ListRow) core.Node {
+				return core.View{Style: core.Style{Height: core.Pt(40)}}
+			}}
+	})
+	app.Post(func() { ref.ScrollTo(core.Point{Y: 1000}, true) })
+	app.Settle()
+	app.Post(func() { rows.Set(append(ids(5, 1000), rows.Get()...)) })
+	app.Settle()
+	want := []ScrollCommand{{Point: driver.Point{Y: 1000}, Animated: true}, {Point: driver.Point{Y: 200}, By: true}}
+	if got := app.Find("id:list").Scrolls; !slices.Equal(got, want) {
+		t.Errorf("scrolls %+v, want %+v", got, want)
 	}
 }
 
