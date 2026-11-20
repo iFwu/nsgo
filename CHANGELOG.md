@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Free an overlay, a `Tooltip`'s included, once the view it belongs to is removed, instead of its host keeping it, and through it the whole subtree it was in, for the life of the window.
+- Free a removed view that was laid out on its own as a relayout boundary, instead of the queue of boundaries keeping it, and through it the whole subtree it was in, until a later queue as long reuses its slot.
 
 ## [0.2.0] - 2026-11-19
 

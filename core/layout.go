@@ -182,8 +182,10 @@ func (t *Tree) relayoutBoundaries() bool {
 		slices.SortStableFunc(t.boundaries, func(a, b *node) int { return depth(a) - depth(b) })
 	}
 	for len(t.boundaries) > 0 {
-		b := t.boundaries[len(t.boundaries)-1]
-		t.boundaries = t.boundaries[:len(t.boundaries)-1]
+		last := len(t.boundaries) - 1
+		b := t.boundaries[last]
+		t.boundaries[last] = nil // the array outlives the pop; a slot left set keeps a removed subtree
+		t.boundaries = t.boundaries[:last]
 		b.queued = false
 		if b.deleted || !b.layoutDirty {
 			continue
