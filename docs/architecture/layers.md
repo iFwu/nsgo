@@ -69,6 +69,7 @@ nsgo
 │   │   ├── loopback                     Shared loopback redirects of desktops' sign-ins
 │   │   ├── updates                      Shared update checks of Linux, Android and iOS
 │   │   ├── picked, fontfile             Shared picked photos and font files
+│   │   ├── codescan                     Codes read in Go from camera frames, where the system reads none (Android)
 │   │   ├── queue, perfhud               Shared batches and readings
 │   │   └── canvastest, imageloadtest    Shared test drawings and HTTP client checks
 │   └── internal/audiosession            iOS's one audio session, shared with microphone
