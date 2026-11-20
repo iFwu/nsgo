@@ -13,6 +13,7 @@
 - Record in `nsgotest` the scrolls an app asks a scroll view for, to a point or by a distance and whether animated, in `View.Scrolls`, as `WebCommands` and `Seeks` record what a web view and a video were asked.
 - Free a removed `List`, instead of the tree's list of the lists it updates keeping it past its new end, and through it the whole subtree it was in, while another list stays.
 - Let a `List`'s row whose views have a closed tooltip go once it scrolls away, instead of holding it as a row with an open overlay is held, which kept every such row mounted, and in memory, for as long as the list stayed.
+- Keep a multiline `Input`'s caret, its selection and the rects an input method places its candidates by to the font's ascent and descent on macOS when `Style.LineHeight` is taller than the font, instead of reaching up through the extra height, with the glyphs where they were.
 
 ## [0.2.0] - 2026-11-19
 

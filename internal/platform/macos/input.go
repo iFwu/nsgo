@@ -31,10 +31,14 @@ import (
 
 // input is an input view's editor and what it tracks.
 type input struct {
-	fs        field.State
-	field     objc.ID // the responder: an NSTextField or an NSTextView
-	host      objc.ID // what is placed: the field, or the text view's scroll view
-	label     objc.ID // a text view's placeholder
+	fs    field.State
+	field objc.ID // the responder: an NSTextField or an NSTextView
+	host  objc.ID // what is placed: the field, or the text view's scroll view
+	label objc.ID // a text view's placeholder
+	// drop is how far below the top padding a text view's lines, and its
+	// placeholder's, start: each line is as tall as the font, its line
+	// spacing below it, so the first is dropped to where a Text sets it.
+	drop      float64
 	multiline bool
 	masked    bool
 	focused   bool
@@ -135,7 +139,7 @@ func registerInput() {
 					return apple.CGPoint{}
 				}
 				p := in.fs.Config.Padding
-				return apple.CGPoint{X: float64(p.Left), Y: float64(p.Top)}
+				return apple.CGPoint{X: float64(p.Left), Y: float64(p.Top) + in.drop}
 			}},
 			{Cmd: sel("keyDown:"), Fn: func(self objc.ID, cmd objc.SEL, event objc.ID) {
 				in := inputOf(self)
@@ -766,8 +770,12 @@ func (v *view) configure(c *driver.InputConfig) {
 		// puts the text after the top and left padding.
 		p := c.Padding
 		in.field.Send(sel("setTextContainerInset:"), apple.CGSize{Width: float64(p.Left+p.Right) / 2, Height: float64(p.Top+p.Bottom) / 2})
-		para := lineParagraph(objc.ID(font), align, float64(c.Style.LineHeight))
+		para, drop := lineParagraph(objc.ID(font), align, float64(c.Style.LineHeight))
 		in.setParagraph(objc.ID(font), nsColor(c.Style.Color), para)
+		if drop != in.drop {
+			in.drop = drop
+			in.field.Send(sel("invalidateTextContainerOrigin"))
+		}
 		placeholder := objc.ID(apple.Class("NSAttributedString")).Send(selAlloc).Send(sel("initWithString:attributes:"),
 			apple.NSString(c.Placeholder), attributes(objc.ID(font), nsColor(placeholderColor(c)), para))
 		in.label.Send(sel("setAttributedStringValue:"), placeholder)
@@ -825,27 +833,30 @@ func attributes(font, color, para objc.ID) objc.ID {
 }
 
 // lineParagraph returns a new paragraph style of alignment align and,
-// when lineHeight is above 0, lines that tall with their baselines where
-// a Text of the same font puts them: half the height the font leaves
-// above its ascent and half below its descent, on a whole point. The
-// caller releases it.
+// when lineHeight is above 0, lines lineHeight apart, and how far the
+// first line drops below the top of its lineHeight, so each sits with its
+// baseline where a Text of the same font puts it: half the height the font
+// leaves above its ascent and half below its descent, on a whole point.
+// The caller releases it.
 //
 // TextKit sets a line's glyphs at the bottom of its line, and TextKit 2
 // takes a baseline offset off the line's height rather than raising its
-// glyphs. So a line ends at the glyphs' descent and its line spacing
-// adds the rest below it, in both TextKits, the text view's and the
-// placeholder label's.
-func lineParagraph(font objc.ID, align int, lineHeight float64) objc.ID {
-	para := objc.ID(apple.Class("NSMutableParagraphStyle")).Send(selAlloc).Send(sel("init"))
+// glyphs. A line as tall as the font, its line spacing the rest, keeps
+// the glyphs in place and the caret, the selection and the rects an input
+// method places its candidates by to the font's ascent and descent, in
+// both TextKits, the text view's and the placeholder label's.
+func lineParagraph(font objc.ID, align int, lineHeight float64) (para objc.ID, drop float64) {
+	para = objc.ID(apple.Class("NSMutableParagraphStyle")).Send(selAlloc).Send(sel("init"))
 	para.Send(selSetAlignment, align)
 	if lineHeight > 0 {
 		ascent, descent := objc.Send[float64](font, sel("ascender")), -objc.Send[float64](font, sel("descender"))
-		line := min(math.Round((lineHeight+ascent-descent)/2)+descent, lineHeight)
+		line := min(ascent+descent, lineHeight)
 		para.Send(sel("setMinimumLineHeight:"), line)
 		para.Send(sel("setMaximumLineHeight:"), line)
 		para.Send(sel("setLineSpacing:"), lineHeight-line)
+		drop = math.Round((lineHeight+ascent-descent)/2) - (line - descent)
 	}
-	return para
+	return para, drop
 }
 
 // setParagraph gives a text view's text, the text typed into it and the
@@ -928,7 +939,7 @@ func inputLayout(self objc.ID, cmd objc.SEL) {
 		p := in.fs.Config.Padding
 		in.host.Send(selSetFrame, apple.Rect(x-float64(p.Left), float64(box.Origin.Y-p.Top), w+float64(p.Left+p.Right), float64(box.Size.Height+p.Top+p.Bottom)))
 		h := objc.Send[apple.CGSize](in.label, selIntrinsicContentSize).Height
-		in.label.Send(selSetFrame, apple.Rect(x, float64(box.Origin.Y), w, max(h, float64(box.Size.Height))))
+		in.label.Send(selSetFrame, apple.Rect(x, float64(box.Origin.Y)+in.drop, w, max(h, float64(box.Size.Height))))
 		return
 	}
 	h := objc.Send[apple.CGSize](in.field, selIntrinsicContentSize).Height

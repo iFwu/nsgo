@@ -3,7 +3,9 @@
 package macos
 
 import (
+	"math"
 	"strings"
+	"sync"
 	"testing"
 	"unsafe"
 
@@ -114,19 +116,7 @@ func TestMultilineEditorKeepsTheLineHeight(t *testing.T) {
 		loadAppKit()
 		style := driver.TextStyle{Font: driver.Font{Size: 14.5, Weight: 400}, Color: driver.RGB(0), LineHeight: 22}
 		const width = 300
-		// baselines are a Text's of text, from its top.
-		baselines := func(text string) []float64 {
-			p := apple.TextEngine{}.Prepare(&driver.AttributedText{Text: text, Style: style})
-			defer p.Release()
-			l := p.Layout(driver.Size{Width: width, Height: 1000}).(*apple.Layout)
-			defer l.Release()
-			var out []float64
-			for _, line := range l.TextLines() {
-				b := line.Bounds
-				out = append(out, float64(b.Origin.Y+(b.Size.Height-line.Ascender-line.Descender)/2+line.Ascender))
-			}
-			return out
-		}
+		baselines := func(text string) []float64 { return textBaselines(style, text, width) }
 		for _, textKit1 := range []bool{false, true} {
 			s := &surface{views: make([]*view, 2), animator: driver.NewAnimator(func(driver.Event) {})}
 			v := s.create(driver.KindInput, 1)
@@ -180,6 +170,95 @@ func TestMultilineEditorKeepsTheLineHeight(t *testing.T) {
 				apple.NSRange{Location: 3}, apple.NSRange{Location: 1<<63 - 1})
 			in.applying = false
 			check("lines around a marked one", "HHH\nHHH\nHHH", [2]int{0, 0}, [2]int{2, -1})
+			s.delete(v, false)
+			window.Send(selRelease)
+		}
+	})
+}
+
+// textBaselines returns the baselines of a Text of text in style, from
+// its top, laid out width wide.
+func textBaselines(style driver.TextStyle, text string, width float64) []float64 {
+	p := apple.TextEngine{}.Prepare(&driver.AttributedText{Text: text, Style: style})
+	defer p.Release()
+	l := p.Layout(driver.Size{Width: driver.Points(width), Height: 1000}).(*apple.Layout)
+	defer l.Release()
+	var out []float64
+	for _, line := range l.TextLines() {
+		b := line.Bounds
+		out = append(out, float64(b.Origin.Y+(b.Size.Height-line.Ascender-line.Descender)/2+line.Ascender))
+	}
+	return out
+}
+
+// keyWindowClass is a window that is always the key window, where a text
+// view shows its caret, on screen or not.
+var keyWindowClass = sync.OnceValue(func() objc.Class {
+	return register("NsgoTestKeyWindow", apple.Class("NSWindow"), nil, []objc.MethodDef{
+		{Cmd: sel("isKeyWindow"), Fn: func(objc.ID, objc.SEL) bool { return true }},
+	})
+})
+
+// TestMultilineEditorCaretFitsTheFont checks that the lines of a multiline
+// input taller than its font are as tall as the font where a Text puts
+// them, not Style.LineHeight: its caret and the rect an input method puts
+// its candidates by span a line's ascent and descent, on a line in the
+// font and one in a fallback font. TextKit 1, which macOS 11 gives a text
+// view, counts a line's spacing into the line, so there they start at the
+// ascent and keep the full height.
+func TestMultilineEditorCaretFitsTheFont(t *testing.T) {
+	onMain(func() {
+		loadAppKit()
+		style := driver.TextStyle{Font: driver.Font{Size: 14.5, Weight: 400}, Color: driver.RGB(0), LineHeight: 22}
+		const width, height, top = 300, 120, 5
+		const text = "HHH\n中文\nHHH"
+		base := textBaselines(style, text, width)
+		for _, textKit1 := range []bool{false, true} {
+			s := &surface{views: make([]*view, 2), animator: driver.NewAnimator(func(driver.Event) {})}
+			v := s.create(driver.KindInput, 1)
+			s.views[v.id] = v
+			window := objc.ID(keyWindowClass()).Send(selAlloc).Send(sel("initWithContentRect:styleMask:backing:defer:"),
+				apple.Rect(0, 0, width, height), uint(0), uint(2), false)
+			window.Send(sel("setReleasedWhenClosed:"), false)
+			window.Send(sel("contentView")).Send(selAddSubview, v.native)
+			v.native.Send(selSetFrame, apple.Rect(0, 0, width, height))
+			v.configure(&driver.InputConfig{Multiline: true, Style: style, Padding: driver.Edges{Top: top},
+				Content: driver.Bounds{Origin: driver.Point{Y: top}, Size: driver.Size{Width: width, Height: height - top}}})
+			in := v.input
+			if textKit1 {
+				in.field.Send(sel("layoutManager"))
+			}
+			in.value(text, 0)
+			window.Send(sel("makeFirstResponder:"), in.field)
+			font := in.field.Send(sel("font"))
+			ascent, descent := objc.Send[float64](font, sel("ascender")), -objc.Send[float64](font, sel("descender"))
+			indicator := apple.Class("NSTextInsertionIndicator") // macOS 14
+			for i, loc := range []uint{1, 5, 9} {
+				in.field.Send(selSetSelRange, apple.NSRange{Location: loc})
+				v.native.Send(sel("layout"))
+				want := top + base[i] - ascent
+				fits := func(f apple.CGRect) bool {
+					return math.Abs(f.Origin.Y-want) <= 0.5 && (textKit1 || math.Abs(f.Size.Height-(ascent+descent)) <= 0.5)
+				}
+				r := objc.Send[apple.CGRect](in.field, sel("firstRectForCharacterRange:actualRange:"), apple.NSRange{Location: loc, Length: 1}, uintptr(0))
+				r = objc.Send[apple.CGRect](window, sel("convertRectFromScreen:"), r)
+				r = objc.Send[apple.CGRect](in.field, sel("convertRect:fromView:"), r, objc.ID(0))
+				if !fits(r) {
+					t.Errorf("TextKit 1 %v, line %d: an input method's rect is %.2f pt tall at %.2f, want the font's %.2f at %.2f",
+						textKit1, i, r.Size.Height, r.Origin.Y, ascent+descent, want)
+				}
+				if indicator == 0 {
+					continue
+				}
+				for _, sub := range apple.Subviews(in.field) {
+					if objc.Send[bool](sub, sel("isKindOfClass:"), indicator) {
+						if f := objc.Send[apple.CGRect](sub, sel("frame")); !fits(f) {
+							t.Errorf("TextKit 1 %v, line %d: the caret is %.2f pt tall at %.2f, want the font's %.2f at %.2f",
+								textKit1, i, f.Size.Height, f.Origin.Y, ascent+descent, want)
+						}
+					}
+				}
+			}
 			s.delete(v, false)
 			window.Send(selRelease)
 		}
