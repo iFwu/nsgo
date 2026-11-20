@@ -694,7 +694,9 @@ func (t *Tree) updateList(v *node) bool {
 			p.at, p.animating = offset, cmd.animated
 			st.pin = &p
 		}
-		retarget = nil
+		// The jump sets the offset outright: the anchoring scroll this
+		// update's changes asked for is already in it.
+		retarget, anchor = nil, 0
 		if !cmd.animated {
 			st.jump(offset)
 		}
