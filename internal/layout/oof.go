@@ -304,7 +304,9 @@ func computeOofLayout(n Node, out *layoutOutput) {
 	out.oofCandidates = nil
 	st := n.LayoutState()
 	// Always reset the hoisted list, even to empty, so that lists recorded
-	// by previous layouts do not persist.
+	// by previous layouts do not persist, and clear it, so that the boxes
+	// they held past its new end are not kept.
+	clear(st.hoisted)
 	hoisted := st.hoisted[:0]
 	var unclaimed []oofCandidate
 	overflowRect := performOofLayout(n, candidates, out.oofArea.size, out.oofArea.offset, direction, claims,
