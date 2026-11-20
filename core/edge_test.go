@@ -1,8 +1,10 @@
 package core
 
 import (
+	goruntime "runtime"
 	"slices"
 	"testing"
+	"weak"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
 )
@@ -103,4 +105,39 @@ func TestSoftEdgeLevels(t *testing.T) {
 	if last := levels[len(levels)-1]; last.Total != driver.SoftEdgeBlur || last.Full != 0 || levels[0].Gone != 1 {
 		t.Errorf("levels = %+v", levels)
 	}
+}
+
+// A bar and the scroll view it is over are freed once removed: the lists of bars and of the scroll views they reach
+// into keep neither past their new end while another bar stays.
+func TestRemovedEdgeBarsAndTheirScrollViewsAreFreed(t *testing.T) {
+	kept, gone := &Ref{}, &Ref{}
+	var shown *Signal[bool]
+	pinned := Style{Position: Absolute, Top: Pt(0), Left: Pt(0), Right: Pt(0), Height: Pt(40)}
+	pane := func(scroll *Ref, scrollID, barID string) Group {
+		return Group{
+			Scroll{Ref: scroll, TestID: scrollID, Style: Style{FlexGrow: 1}, Children: []Node{View{Style: Style{Height: Pt(1000)}}}},
+			View{TestID: barID, EdgeBar: EdgeBar{Scroll: scroll, Side: SideTop}, Style: pinned},
+		}
+	}
+	h := newHost(t, Size{Width: 200, Height: 300}, func(cx *Scope) Node {
+		shown = NewSignal(cx, true)
+		return View{Style: Style{FlexGrow: 1}, Children: []Node{
+			View{Style: Style{FlexGrow: 1}, Children: []Node{pane(kept, "kept scroll", "kept bar")}},
+			View{Style: Style{FlexGrow: 1}, Children: []Node{Show{When: shown.Get,
+				Then: func(*Scope) Node { return pane(gone, "scroll", "bar") },
+				Else: func(*Scope) Node { return Group{View{Style: Style{FlexGrow: 1}}, View{Style: pinned}} }}}},
+		}}
+	})
+	h.commit()
+	scroll, bar := weak.Make(h.find("scroll")), weak.Make(h.find("bar"))
+	shown.Set(false)
+	h.commit()
+	goruntime.GC()
+	if scroll.Value() != nil {
+		t.Error("the removed scroll view stays in memory")
+	}
+	if bar.Value() != nil {
+		t.Error("the removed bar stays in memory")
+	}
+	goruntime.KeepAlive(h.tree)
 }
