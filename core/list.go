@@ -1099,6 +1099,7 @@ func (t *Tree) updateLists() bool {
 		}
 		changed = t.within2(l, func() bool { return t.updateList(l) }) || changed
 	}
+	clear(t.lists[len(live):]) // still in the array, which would keep the lists removed
 	t.lists = live
 	slices.SortStableFunc(parents, func(a, b *node) int { return a.list.depth - b.list.depth })
 	for _, l := range parents {

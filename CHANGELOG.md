@@ -11,6 +11,7 @@
 - Free an absolutely positioned or fixed view its containing block no longer has, instead of the containing block's list of the boxes it positions keeping it past its new end, and through it the whole subtree it was in, until the containing block positions as many again.
 - Free a removed `EdgeBar` view and a removed scroll view a bar was over, instead of the lists of bars and of the scroll views they reach into keeping them past their new end, and through each the whole subtree it was in, while another bar stays.
 - Record in `nsgotest` the scrolls an app asks a scroll view for, to a point or by a distance and whether animated, in `View.Scrolls`, as `WebCommands` and `Seeks` record what a web view and a video were asked.
+- Free a removed `List`, instead of the tree's list of the lists it updates keeping it past its new end, and through it the whole subtree it was in, while another list stays.
 
 ## [0.2.0] - 2026-11-19
 

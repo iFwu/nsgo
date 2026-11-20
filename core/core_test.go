@@ -898,6 +898,23 @@ func TestViewsDroppedFromListsAreFreed(t *testing.T) {
 		h.commit()
 		freed(t, h, dropped...)
 	})
+
+	t.Run("lists the tree updates", func(t *testing.T) {
+		var shown *Signal[bool]
+		list := func(id string) List {
+			return List{TestID: id, Count: func() int { return 3 }, Style: Style{Height: Pt(90)},
+				Row: func(*Scope, ListRow) Node { return View{Style: Style{Height: Pt(30)}} }}
+		}
+		h := newHost(t, Size{Width: 100, Height: 200}, func(cx *Scope) Node {
+			shown = NewSignal(cx, true)
+			return View{Children: []Node{list("kept"), Show{When: shown.Get, Then: func(*Scope) Node { return list("list") }}}}
+		})
+		h.commit()
+		dropped := []weak.Pointer[node]{weak.Make(h.find("list"))}
+		shown.Set(false)
+		h.commit()
+		freed(t, h, dropped...)
+	})
 }
 
 func TestCatchShowsFallbackAndResets(t *testing.T) {
