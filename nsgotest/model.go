@@ -874,7 +874,7 @@ func (a *App) apply(b *driver.MountBatch) {
 			}
 		}
 	}
-	// As macOS does, content that shrank or a viewport that grew under an offset past the new end pulls it back to the end, once the rest of the batch (the ScrollBy keeping the visible content in place) is applied.
+	// As macOS, Windows, Linux, Android and the web do (UIKit leaves the offset until a touch), content that shrank or a viewport that grew under an offset past the new end pulls it back to the end, once the rest of the batch (the ScrollBy keeping the visible content in place) is applied.
 	for _, v := range resized {
 		if v.Kind != driver.KindScroll || v.Scroll.Zooms() || a.views[v.ID] != v {
 			continue
