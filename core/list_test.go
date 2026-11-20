@@ -73,6 +73,35 @@ func TestKeyedListKeepsTheVisibleRowsInPlace(t *testing.T) {
 	}
 }
 
+// A jump to a row the same batch inserts above the viewport lands on that row, animated or not: the jump replaces the offset the inserted row would have kept.
+func TestKeyedListJumpsToARowInsertedAboveTheViewport(t *testing.T) {
+	for _, animated := range []bool{false, true} {
+		var ids *core.Signal[[]int]
+		ref := &core.Ref{}
+		a := nsgotest.Start(t, func(cx *core.Scope) core.Node {
+			ids = core.NewSignalFunc(cx, makeIDs(100, 0), nil)
+			return core.List{TestID: "list", Ref: ref, Style: core.Style{Height: core.Pt(400)},
+				Count: func() int { return len(ids.Get()) }, Key: func(i int) any { return ids.Get()[i] },
+				EstimatedSize: 40, Row: func(cx *core.Scope, r core.ListRow) core.Node {
+					return core.Text{ContentFunc: func() string { return rowText(ids.Get()[r.Index()]) }, Style: core.Style{Height: core.Pt(40)}}
+				}}
+		})
+		a.ScrollTo("id:list", core.Point{Y: 1000})
+		a.Post(func() {
+			ids.Set(slices.Insert(slices.Clone(ids.Get()), 20, 1000))
+			ref.ScrollToIndexAt(20, 0, 0, animated)
+		})
+		a.Settle()
+		list := a.Find("id:list")
+		if got := onScreen(t, a, list, 1000); got != 0 {
+			t.Errorf("animated %v: the inserted row is %v from the viewport's start, want 0", animated, got)
+		}
+		if list.Offset.Y != 800 {
+			t.Errorf("animated %v: offset %v, want 800", animated, list.Offset.Y)
+		}
+	}
+}
+
 func makeIDs(n, from int) []int {
 	out := make([]int, n)
 	for i := range out {
