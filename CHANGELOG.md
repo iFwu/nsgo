@@ -131,6 +131,7 @@
 - Free a removed `EdgeBar` view and a removed scroll view a bar was over, instead of the lists of bars and of the scroll views they reach into keeping them past their new end, and through each the whole subtree it was in, while another bar stays (#1023 by @iFwu).
 - Land a `List`'s scroll to a row, or to its end, where it asks when rows were inserted, removed or measured above the viewport in the same update, instead of shifted by the scroll that would have kept the visible rows in place (#1019 by @iFwu).
 - Pull a scroll view's offset back to its end in `nsgotest` when its content shrinks or its viewport grows past it, and report where it went, as macOS, Windows, Linux, Android and the web do, instead of leaving it past the end (#1020 by @iFwu).
+- Free a removed `Overlay`, `Modal`, `Position: Fixed` view or `Tooltip` bubble instead of the view hosting it keeping it, and through it the whole subtree it was in, for the life of the window, so rebuilding a view with a tooltip no longer grows memory (#1006 by @iFwu).
 
 ## [0.2.0] - 2026-11-19
 
