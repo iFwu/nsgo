@@ -1,7 +1,10 @@
 package core
 
 import (
+	"fmt"
+	goruntime "runtime"
 	"testing"
+	"weak"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
 )
@@ -126,5 +129,29 @@ func TestHiddenTooltipDoesNotFollowScrolls(t *testing.T) {
 	h.tree.Dispatch(driver.Event{Kind: driver.EventScroll, ID: h.find("scroll").id, Point: Point{Y: 80}})
 	if !h.tree.view.layoutDirty {
 		t.Fatal("a shown tooltip does not follow a scroll")
+	}
+}
+
+// A view rebuilt with its tooltip leaves nothing of the old one behind: the root view hosts only the shown copy's overlay, and the old view and what was in it are freed.
+func TestRebuiltTooltipFreesTheOldView(t *testing.T) {
+	var rev *Signal[int]
+	h := newHost(t, Size{Width: 300, Height: 300}, func(cx *Scope) Node {
+		rev = NewSignal(cx, 0)
+		return Dynamic(func(*Scope) Node {
+			return View{TestID: fmt.Sprint("trigger", rev.Get()), Label: "Save", Role: RoleButton, Tooltip: Text{Content: "Writes the document"}}
+		})
+	})
+	h.commit()
+	old := weak.Make(h.find("trigger0"))
+	for i := 1; i <= 3; i++ {
+		rev.Set(i)
+		h.commit()
+	}
+	if n := len(h.tree.view.hosted); n != 1 {
+		t.Fatalf("the root view hosts %d overlays, want the shown tooltip's 1", n)
+	}
+	goruntime.GC()
+	if old.Value() != nil {
+		t.Fatal("the view rebuilt away stays in memory")
 	}
 }

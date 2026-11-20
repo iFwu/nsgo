@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Free an overlay, a `Tooltip`'s included, once the view it belongs to is removed, instead of its host keeping it, and through it the whole subtree it was in, for the life of the window.
+
 ## [0.2.0] - 2026-11-19
 
 - Add HarmonyOS as a preview target, whose ArkTS host runs the engine in ArkWeb and draws it with ArkUI views, in `nsgo build`, `nsgo run` and `nsgo test -target harmonyos` (#79 by @togotop).

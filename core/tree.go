@@ -1050,7 +1050,9 @@ func (t *Tree) discard(n *node) {
 		n.ref.n = nil
 	}
 	if n.hoist != nil {
+		// The host lists what it hosts until they go: one left there keeps the subtree it was in.
 		h := n.hoist.host
+		h.hosted = slices.DeleteFunc(h.hosted, func(x *node) bool { return x == n })
 		t.reorder(h)
 		t.markLayout(h)
 	}
