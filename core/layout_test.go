@@ -3,7 +3,9 @@ package core
 import (
 	"fmt"
 	"math"
+	goruntime "runtime"
 	"testing"
+	"weak"
 
 	"github.com/nsgo-dev/nsgo/internal/driver"
 )
@@ -373,6 +375,40 @@ func TestNestedRelayoutBoundariesBothLayOut(t *testing.T) {
 	})
 	// The commit checks itself against a full layout (CheckCommits).
 	h.commit()
+}
+
+// Relayout boundaries laid out on their own are freed once removed: the queue of boundaries keeps none it has laid out, so views shown and hidden again and again do not each stay behind in its unused slots.
+func TestRemovedRelayoutBoundariesAreFreed(t *testing.T) {
+	var shown *Signal[bool]
+	var x *Signal[Points]
+	h := newHost(t, Size{Width: 400, Height: 400}, func(cx *Scope) Node {
+		shown, x = NewSignal(cx, true), NewSignal(cx, Points(0))
+		boundary := func(id string) Node {
+			return View{TestID: id, Style: Style{Width: Pt(100), Height: Pt(100)}, Children: []Node{
+				View{StyleFunc: func() Style {
+					return Style{Position: Absolute, Left: Pt(x.Get()), Width: Pt(1), Height: Pt(1)}
+				}},
+			}}
+		}
+		return View{Children: []Node{
+			Show{When: shown.Get, Then: func(*Scope) Node {
+				return Group{boundary("a"), boundary("b")}
+			}},
+		}}
+	})
+	h.commit()
+	x.Set(50) // lays a and b out on their own
+	h.commit()
+	a, b := weak.Make(h.find("a")), weak.Make(h.find("b"))
+	for _, on := range []bool{false, true, false} {
+		shown.Set(on)
+		h.commit()
+	}
+	goruntime.GC()
+	if a.Value() != nil || b.Value() != nil {
+		t.Fatal("a boundary removed two showings ago stays in memory")
+	}
+	goruntime.KeepAlive(h.tree)
 }
 
 func TestLayoutRoundsToDevicePixels(t *testing.T) {
