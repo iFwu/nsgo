@@ -388,6 +388,7 @@ func (a *App) apply(b *driver.MountBatch) {
 	if b.LayoutAnimation != nil {
 		a.LayoutAnimation = b.LayoutAnimation
 	}
+	var resized []*View
 	for _, it := range b.Items {
 		v := a.views[it.ID]
 		if name := viewItemNames[it.Kind]; v == nil && (name != "" || it.ID != 0 && it.Kind != driver.ItemCreate) {
@@ -424,6 +425,7 @@ func (a *App) apply(b *driver.MountBatch) {
 			v.Parent = p
 		case driver.ItemFrame:
 			v.Frame = it.Frame
+			resized = append(resized, v)
 		case driver.ItemViewStyle:
 			v.Style = *it.ViewStyle
 		case driver.ItemViewProps:
@@ -452,6 +454,7 @@ func (a *App) apply(b *driver.MountBatch) {
 			v.Selection = driver.TextRange{Start: min(max(r.Start, 0), n), End: min(max(r.End, 0), n)}
 		case driver.ItemScrollContent:
 			v.Content = it.Size
+			resized = append(resized, v)
 		case driver.ItemScrollConfig:
 			if !v.Scroll.Zooms() && it.Scroll.Zooms() || it.Scroll.ZoomScale != v.Scroll.ZoomScale {
 				v.ZoomScale = it.Scroll.ZoomScale
@@ -869,6 +872,18 @@ func (a *App) apply(b *driver.MountBatch) {
 			for _, o := range a.views {
 				a.setFocus(o, false)
 			}
+		}
+	}
+	// As macOS does, content that shrank or a viewport that grew under an offset past the new end pulls it back to the end, once the rest of the batch (the ScrollBy keeping the visible content in place) is applied.
+	for _, v := range resized {
+		if v.Kind != driver.KindScroll || v.Scroll.Zooms() || a.views[v.ID] != v {
+			continue
+		}
+		end := v.clamp(v.Offset)
+		if at := (driver.Point{X: min(v.Offset.X, end.X), Y: min(v.Offset.Y, end.Y)}); at != v.Offset {
+			v.Offset = at
+			a.anim.Scroll(v.ID, at)
+			a.post(driver.Event{Kind: driver.EventScroll, ID: v.ID, Point: at, Count: v.Applied})
 		}
 	}
 }
