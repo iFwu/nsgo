@@ -799,6 +799,107 @@ func TestEachKeepsRowsOfEqualItems(t *testing.T) {
 	}
 }
 
+// A view dropped from a list of views is freed: a list cut back to fewer views keeps none of the others in its array
+// past its end, where each would stay in memory with the whole subtree it was in.
+func TestViewsDroppedFromListsAreFreed(t *testing.T) {
+	freed := func(t *testing.T, h *host, views ...weak.Pointer[node]) {
+		t.Helper()
+		goruntime.GC()
+		for _, v := range views {
+			if n := v.Value(); n != nil {
+				t.Errorf("%s stays in memory", n.props.TestID)
+			}
+		}
+		goruntime.KeepAlive(h.tree)
+	}
+	views := func(prefix string, n int, opts View) Group {
+		g := Group{}
+		for i := range n {
+			v := opts
+			v.TestID = fmt.Sprint(prefix, i)
+			g = append(g, v)
+		}
+		return g
+	}
+	box := func(id string) Span {
+		return Span{Attachment: View{TestID: id, Style: Style{Width: Pt(10), Height: Pt(6)}}}
+	}
+
+	t.Run("rows an Each drops", func(t *testing.T) {
+		var items *Signal[[]int]
+		h := newHost(t, Size{Width: 100, Height: 200}, func(cx *Scope) Node {
+			items = NewSignalFunc(cx, []int{0, 1, 2, 3}, nil)
+			return View{Children: []Node{Each(items.Get, func(i int) int { return i },
+				func(cx *Scope, item func() int, _ func() int) Node { return View{TestID: fmt.Sprint("row", item())} })}}
+		})
+		h.commit()
+		dropped := []weak.Pointer[node]{weak.Make(h.find("row2")), weak.Make(h.find("row3"))}
+		items.Set([]int{0, 1})
+		h.commit()
+		freed(t, h, dropped...)
+	})
+
+	t.Run("views a Dynamic builds again, fewer", func(t *testing.T) {
+		var n *Signal[int]
+		h := newHost(t, Size{Width: 100, Height: 200}, func(cx *Scope) Node {
+			n = NewSignal(cx, 4)
+			return View{Children: []Node{Dynamic(func(*Scope) Node { return views("view", n.Get(), View{}) })}}
+		})
+		h.commit()
+		dropped := []weak.Pointer[node]{weak.Make(h.find("view2")), weak.Make(h.find("view3"))}
+		n.Set(2)
+		h.commit()
+		freed(t, h, dropped...)
+	})
+
+	t.Run("attachments an element's text is set again without", func(t *testing.T) {
+		var el *Element
+		h := newHost(t, Size{Width: 200, Height: 100}, func(cx *Scope) Node {
+			el = NewElement(cx, Text{Spans: []Span{{Content: "ab "}, box("box0"), box("box1")}})
+			return View{Children: []Node{el}}
+		})
+		h.commit()
+		dropped := []weak.Pointer[node]{weak.Make(h.find("box0")), weak.Make(h.find("box1"))}
+		el.Set(Text{Spans: []Span{{Content: "ab"}}})
+		h.commit()
+		freed(t, h, dropped...)
+	})
+
+	t.Run("attachments a text's spans drop", func(t *testing.T) {
+		var boxes *Signal[int]
+		h := newHost(t, Size{Width: 200, Height: 100}, func(cx *Scope) Node {
+			boxes = NewSignal(cx, 2)
+			return View{Children: []Node{Text{SpansFunc: func() []Span {
+				spans := []Span{{Content: "ab "}}
+				for i := range boxes.Get() {
+					spans = append(spans, box(fmt.Sprint("box", i)))
+				}
+				return spans
+			}}}}
+		})
+		h.commit()
+		dropped := []weak.Pointer[node]{weak.Make(h.find("box0")), weak.Make(h.find("box1"))}
+		boxes.Set(0)
+		h.commit()
+		freed(t, h, dropped...)
+	})
+
+	t.Run("views that heard their last layout", func(t *testing.T) {
+		var shown *Signal[bool]
+		h := newHost(t, Size{Width: 100, Height: 200}, func(cx *Scope) Node {
+			shown = NewSignal(cx, true)
+			return View{Children: []Node{Show{When: shown.Get,
+				Then: func(*Scope) Node { return views("heard", 2, View{OnLayout: func(Bounds) {}}) },
+				Else: func(*Scope) Node { return views("plain", 2, View{}) }}}}
+		})
+		h.commit()
+		dropped := []weak.Pointer[node]{weak.Make(h.find("heard0")), weak.Make(h.find("heard1"))}
+		shown.Set(false)
+		h.commit()
+		freed(t, h, dropped...)
+	})
+}
+
 func TestCatchShowsFallbackAndResets(t *testing.T) {
 	var fail *Signal[bool]
 	var reset func()

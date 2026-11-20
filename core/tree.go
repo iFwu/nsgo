@@ -1013,6 +1013,7 @@ func (t *Tree) clear(region *node) {
 	for _, c := range region.children {
 		t.discard(c)
 	}
+	clear(region.children)
 	region.children = region.children[:0]
 	t.childrenChanged(region)
 }
@@ -1083,7 +1084,11 @@ func (t *Tree) discard(n *node) {
 
 // setChildren replaces a region's children with nodes already in it.
 func (t *Tree) setChildren(region *node, children []*node) {
+	old := region.children
 	region.children = append(region.children[:0], children...)
+	if len(children) < len(old) {
+		clear(old[len(children):]) // still in the array, which would keep the views dropped
+	}
 	t.childrenChanged(region)
 }
 
@@ -1872,6 +1877,7 @@ func (t *Tree) mountText(cx *Scope, parent *node, v Text) {
 			kept := make([]bool, len(olds))
 			moved := false // the attachments' views, or their order, changed
 			k := 0         // the attachments so far
+			clear(n.text.spans)
 			n.text.spans = n.text.spans[:0]
 			for _, sp := range spans {
 				if sp.Attachment == nil {

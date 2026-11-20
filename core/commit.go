@@ -281,6 +281,7 @@ func (t *Tree) commitRound() {
 	}
 	t.sendSticky()
 	t.sizeCanvases()
+	clear(t.laidOut)
 	t.laidOut = t.laidOut[:0]
 	t.emitAccessories()
 	t.emitHeaderViews()
@@ -1189,6 +1190,9 @@ func (t *Tree) syncChildren(p *node, want []*node) {
 		t.items = append(t.items, driver.MountItem{Kind: driver.ItemInsert, ID: c.id, Parent: p.id, Before: before})
 	}
 	p.sent.children = append(p.sent.children[:0], want...)
+	if len(want) < len(old) {
+		clear(old[len(want):]) // still in the array, which would keep the views dropped
+	}
 }
 
 // move is the insert of a view inserted before into a parent, put off

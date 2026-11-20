@@ -7,6 +7,7 @@
 - Draw a multiline `Input`'s lines `Style.LineHeight` apart on macOS, its placeholder's included, with their glyphs where a `Text` of its style puts them, as the engine lays the input out, instead of at the font's own height.
 - Land a `List`'s scroll to a row, or to its end, where it asks when rows were inserted, removed or measured above the viewport in the same update, instead of shifted by the scroll that would have kept the visible rows in place.
 - Pull a scroll view's offset back to its end in `nsgotest` when its content shrinks or its viewport grows past it, and report where it went, as the platforms do, instead of leaving it past the end.
+- Free the views a view's children, a `Dynamic`, an `Each` or a text's attachments drop, and those last told their layout, instead of the lists that held them keeping them past their new end, and through each the whole subtree it was in, until the list grows back that long.
 
 ## [0.2.0] - 2026-11-19
 
