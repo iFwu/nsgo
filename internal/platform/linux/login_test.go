@@ -138,14 +138,16 @@ func TestLoginEntryStartsTheAppImage(t *testing.T) {
 	t.Setenv("SNAP", "")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("APPIMAGE", "/home/u/Apps/Demo-x86_64.AppImage")
+	t.Setenv("APPDIR", "/home/u/.mount_other/AppDir")
+	exe, _ := os.Executable()
+	if e, err := currentLoginEntry("dev.nsgo.demo", "Demo"); err != nil || e.executable != exe {
+		t.Fatalf("inherited AppImage entry = %+v, %v, want executable %q", e, err, exe)
+	}
+	t.Setenv("APPDIR", filepath.Dir(exe))
 	if e, err := currentLoginEntry("dev.nsgo.demo", "Demo"); err != nil || e.executable != "/home/u/Apps/Demo-x86_64.AppImage" {
 		t.Fatalf("AppImage entry = %+v, %v", e, err)
 	}
 	t.Setenv("APPIMAGE", "")
-	exe, _ := os.Executable()
-	if e, err := currentLoginEntry("dev.nsgo.demo", "Demo"); err != nil || e.executable != exe {
-		t.Fatalf("entry = %+v, %v, want executable %q", e, err, exe)
-	}
 	t.Setenv("SNAP", "/snap/demo/3")
 	if _, err := currentLoginEntry("dev.nsgo.demo", "Demo"); err != errLoginSandboxed {
 		t.Fatalf("a Snap's entry error = %v", err)

@@ -65,6 +65,7 @@ var layers = []struct {
 	{"internal/platform/speechd", []string{"internal/driver"}},
 	{"internal/platform/textselect", []string{"internal/driver"}},
 	{"internal/platform/updates", []string{"internal/driver", "internal/platform/imageload"}},
+	{"internal/platform/appimage", nil},
 	{"internal/platform/videoalpha", nil},
 	{"internal/platform/videoalpha/clips", nil},
 	{"internal/platform/webstyle", []string{"internal/driver"}},
@@ -75,7 +76,7 @@ var layers = []struct {
 	{"internal/backend", []string{"core", "internal/dev", "internal/engine", "internal/platform/", "internal/restart", "updater"}},
 	// The dev client nsgo.Run starts in nsgo dev's builds; release builds link its no-op Start and Wrap alone.
 	{"internal/dev", []string{"core", "internal/engine"}},
-	{"internal/restart", nil},
+	{"internal/restart", []string{"internal/platform/appimage"}},
 	// The module-wide tests, which have no code of their own.
 	{"internal/moduletest", nil},
 	// The code nsgo writes from catalogs runs on i18n.
@@ -118,7 +119,7 @@ var layers = []struct {
 // writers but not the compiler, which only the core links.
 var platformShared = []string{
 	"internal/audiosession", "internal/platform/apple", "internal/platform/canvas2d", "internal/platform/canvastest", "internal/platform/field", "internal/platform/finger",
-	"internal/platform/fontfile", "internal/platform/hover", "internal/platform/imagedecode", "internal/platform/imageload", "internal/platform/loopback", "internal/platform/menutext", "internal/platform/objcblock", "internal/platform/perfhud", "internal/platform/picked", "internal/platform/privacy", "internal/platform/queue", "internal/platform/scrollbar", "internal/platform/speechd",
+	"internal/platform/appimage", "internal/platform/fontfile", "internal/platform/hover", "internal/platform/imagedecode", "internal/platform/imageload", "internal/platform/loopback", "internal/platform/menutext", "internal/platform/objcblock", "internal/platform/perfhud", "internal/platform/picked", "internal/platform/privacy", "internal/platform/queue", "internal/platform/scrollbar", "internal/platform/speechd",
 	"internal/platform/ops", "internal/platform/textruns", "internal/platform/textselect", "internal/platform/updates", "internal/platform/videoalpha", "internal/platform/webstyle", "internal/shaderir/",
 }
 

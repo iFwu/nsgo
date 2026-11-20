@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/nsgo-dev/nsgo/internal/platform/appimage"
 )
 
 // loginEntry is the per-user XDG autostart file for an app.
@@ -48,10 +50,14 @@ func appLoginEntry(id, name, executable string) (loginEntry, error) {
 
 // loginExecutable is the file the session starts: the AppImage itself for an app in one, as its runtime mounts the app at a path of the run's own, else the running executable.
 func loginExecutable() (string, error) {
-	if image := os.Getenv("APPIMAGE"); filepath.IsAbs(image) {
+	executable, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if image := appimage.Path(executable); image != "" {
 		return image, nil
 	}
-	return os.Executable()
+	return executable, nil
 }
 
 // desktopExecArg writes one argument of an Exec key as the Desktop Entry Specification reads it: quoted when it holds a reserved character, with ", `, $ and \ escaped inside the quotes, and % doubled, as field codes take it.

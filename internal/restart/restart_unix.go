@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+
+	"github.com/nsgo-dev/nsgo/internal/platform/appimage"
 )
 
 // Start starts the program again with args once this process has exited, through a shell that waits for it at most 10 seconds: a macOS app in a bundle through Launch Services, as the user opens it.
@@ -42,7 +44,7 @@ func restartCommand(pid int, program []string) *exec.Cmd {
 
 // restartProgram is the command line starting exe with args again.
 func restartProgram(exe string, args []string) []string {
-	if image := appImage(exe); image != "" {
+	if image := appimage.Path(exe); image != "" {
 		return append([]string{image}, args...)
 	}
 	if bundle := appBundle(exe); runtime.GOOS == "darwin" && bundle != "" {
@@ -53,22 +55,6 @@ func restartProgram(exe string, args []string) []string {
 		return program
 	}
 	return append([]string{exe}, args...)
-}
-
-// appImage is the AppImage exe runs from, or "". The AppImage runtime names the image in APPIMAGE and its mount in APPDIR, and every process an AppImage app starts inherits both, so the image counts only when exe lies inside that mount.
-func appImage(exe string) string {
-	image, dir := os.Getenv("APPIMAGE"), os.Getenv("APPDIR")
-	if !filepath.IsAbs(image) || !filepath.IsAbs(dir) {
-		return ""
-	}
-	if real, err := filepath.EvalSymlinks(dir); err == nil {
-		dir = real
-	}
-	rel, err := filepath.Rel(dir, exe)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return ""
-	}
-	return image
 }
 
 // appBundle is the .app bundle whose executable exe is, or "".

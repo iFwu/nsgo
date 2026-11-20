@@ -68,6 +68,7 @@ nsgo
 │   │   ├── menutext                     Shared menu labels
 │   │   ├── loopback                     Shared loopback redirects of desktops' sign-ins
 │   │   ├── updates                      Shared update checks of Linux, Android and iOS
+│   │   ├── appimage                     Identifies an executable's own AppImage
 │   │   ├── picked, fontfile             Shared picked photos and font files
 │   │   ├── queue, perfhud               Shared batches and readings
 │   │   └── canvastest, imageloadtest    Shared test drawings and HTTP client checks
