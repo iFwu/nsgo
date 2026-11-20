@@ -3,7 +3,6 @@
 package macos
 
 import (
-	"math"
 	"runtime"
 	"slices"
 	"sync"
@@ -31,10 +30,14 @@ import (
 
 // input is an input view's editor and what it tracks.
 type input struct {
-	fs        field.State
-	field     objc.ID // the responder: an NSTextField or an NSTextView
-	host      objc.ID // what is placed: the field, or the text view's scroll view
-	label     objc.ID // a text view's placeholder
+	fs    field.State
+	field objc.ID // the responder: an NSTextField or an NSTextView
+	host  objc.ID // what is placed: the field, or the text view's scroll view
+	label objc.ID // a text view's placeholder
+	// lift is how far a text view's lines, and its placeholder's, are
+	// drawn above where AppKit puts them: AppKit sets a line's extra
+	// height above its glyphs, where a Text centers the font in the line.
+	lift      float64
 	multiline bool
 	masked    bool
 	focused   bool
@@ -135,7 +138,7 @@ func registerInput() {
 					return apple.CGPoint{}
 				}
 				p := in.fs.Config.Padding
-				return apple.CGPoint{X: float64(p.Left), Y: float64(p.Top)}
+				return apple.CGPoint{X: float64(p.Left), Y: float64(p.Top) - in.lift}
 			}},
 			{Cmd: sel("keyDown:"), Fn: func(self objc.ID, cmd objc.SEL, event objc.ID) {
 				in := inputOf(self)
@@ -766,13 +769,19 @@ func (v *view) configure(c *driver.InputConfig) {
 		// puts the text after the top and left padding.
 		p := c.Padding
 		in.field.Send(sel("setTextContainerInset:"), apple.CGSize{Width: float64(p.Left+p.Right) / 2, Height: float64(p.Top+p.Bottom) / 2})
-		para := lineParagraph(objc.ID(font), align, float64(c.Style.LineHeight))
+		para := lineParagraph(align, float64(c.Style.LineHeight))
 		in.setParagraph(objc.ID(font), nsColor(c.Style.Color), para)
 		placeholder := objc.ID(apple.Class("NSAttributedString")).Send(selAlloc).Send(sel("initWithString:attributes:"),
 			apple.NSString(c.Placeholder), attributes(objc.ID(font), nsColor(placeholderColor(c)), para))
 		in.label.Send(sel("setAttributedStringValue:"), placeholder)
 		placeholder.Send(selRelease)
 		para.Send(selRelease)
+		in.lift = 0
+		if c.Style.LineHeight > 0 {
+			natural := objc.Send[float64](objc.ID(font), sel("ascender")) - objc.Send[float64](objc.ID(font), sel("descender"))
+			in.lift = (float64(c.Style.LineHeight) - natural) / 2
+		}
+		in.field.Send(sel("invalidateTextContainerOrigin"))
 	} else {
 		in.field.Send(selSetEnabled, !c.Disabled)
 		setPlaceholder(in.field, c.Placeholder, objc.ID(font), placeholderColor(c), align)
@@ -825,25 +834,18 @@ func attributes(font, color, para objc.ID) objc.ID {
 }
 
 // lineParagraph returns a new paragraph style of alignment align and,
-// when lineHeight is above 0, lines that tall with their baselines where
-// a Text of the same font puts them: half the height the font leaves
-// above its ascent and half below its descent, on a whole point. The
+// when lineHeight is above 0, lines that tall, as a Text's are. The
 // caller releases it.
 //
-// TextKit sets a line's glyphs at the bottom of its line, and TextKit 2
-// takes a baseline offset off the line's height rather than raising its
-// glyphs. So a line ends at the glyphs' descent and its line spacing
-// adds the rest below it, in both TextKits, the text view's and the
-// placeholder label's.
-func lineParagraph(font objc.ID, align int, lineHeight float64) objc.ID {
+// TextKit sets a line's glyphs at the bottom of a line taller than its
+// font, in both TextKits, the text view's and the placeholder label's;
+// the input's lift raises them to the middle of the line.
+func lineParagraph(align int, lineHeight float64) objc.ID {
 	para := objc.ID(apple.Class("NSMutableParagraphStyle")).Send(selAlloc).Send(sel("init"))
 	para.Send(selSetAlignment, align)
 	if lineHeight > 0 {
-		ascent, descent := objc.Send[float64](font, sel("ascender")), -objc.Send[float64](font, sel("descender"))
-		line := min(math.Round((lineHeight+ascent-descent)/2)+descent, lineHeight)
-		para.Send(sel("setMinimumLineHeight:"), line)
-		para.Send(sel("setMaximumLineHeight:"), line)
-		para.Send(sel("setLineSpacing:"), lineHeight-line)
+		para.Send(sel("setMinimumLineHeight:"), lineHeight)
+		para.Send(sel("setMaximumLineHeight:"), lineHeight)
 	}
 	return para
 }
@@ -928,7 +930,7 @@ func inputLayout(self objc.ID, cmd objc.SEL) {
 		p := in.fs.Config.Padding
 		in.host.Send(selSetFrame, apple.Rect(x-float64(p.Left), float64(box.Origin.Y-p.Top), w+float64(p.Left+p.Right), float64(box.Size.Height+p.Top+p.Bottom)))
 		h := objc.Send[apple.CGSize](in.label, selIntrinsicContentSize).Height
-		in.label.Send(selSetFrame, apple.Rect(x, float64(box.Origin.Y), w, max(h, float64(box.Size.Height))))
+		in.label.Send(selSetFrame, apple.Rect(x, float64(box.Origin.Y)-in.lift, w, max(h, float64(box.Size.Height)+in.lift)))
 		return
 	}
 	h := objc.Send[apple.CGSize](in.field, selIntrinsicContentSize).Height
