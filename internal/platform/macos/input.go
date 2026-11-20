@@ -3,6 +3,7 @@
 package macos
 
 import (
+	"math"
 	"runtime"
 	"slices"
 	"sync"
@@ -765,10 +766,13 @@ func (v *view) configure(c *driver.InputConfig) {
 		// puts the text after the top and left padding.
 		p := c.Padding
 		in.field.Send(sel("setTextContainerInset:"), apple.CGSize{Width: float64(p.Left+p.Right) / 2, Height: float64(p.Top+p.Bottom) / 2})
-		in.label.Send(selSetFont, objc.ID(font))
-		in.label.Send(selSetTextColor, nsColor(placeholderColor(c)))
-		in.label.Send(selSetAlignment, align)
-		in.label.Send(selSetString, apple.NSString(c.Placeholder))
+		para := lineParagraph(objc.ID(font), align, float64(c.Style.LineHeight))
+		in.setParagraph(objc.ID(font), nsColor(c.Style.Color), para)
+		placeholder := objc.ID(apple.Class("NSAttributedString")).Send(selAlloc).Send(sel("initWithString:attributes:"),
+			apple.NSString(c.Placeholder), attributes(objc.ID(font), nsColor(placeholderColor(c)), para))
+		in.label.Send(sel("setAttributedStringValue:"), placeholder)
+		placeholder.Send(selRelease)
+		para.Send(selRelease)
 	} else {
 		in.field.Send(selSetEnabled, !c.Disabled)
 		setPlaceholder(in.field, c.Placeholder, objc.ID(font), placeholderColor(c), align)
@@ -807,6 +811,60 @@ var textAttrs = sync.OnceValue(func() (a struct{ font, color, background, paragr
 	return a
 })
 
+// attributes returns text attributes of font, color and paragraph style
+// para, which may be 0.
+func attributes(font, color, para objc.ID) objc.ID {
+	a := textAttrs()
+	attrs := objc.ID(apple.Class("NSMutableDictionary")).Send(sel("dictionary"))
+	for _, kv := range [][2]objc.ID{{font, a.font}, {color, a.color}, {para, a.paragraph}} {
+		if kv[0] != 0 && kv[1] != 0 {
+			attrs.Send(sel("setObject:forKey:"), kv[0], kv[1])
+		}
+	}
+	return attrs
+}
+
+// lineParagraph returns a new paragraph style of alignment align and,
+// when lineHeight is above 0, lines that tall with their baselines where
+// a Text of the same font puts them: half the height the font leaves
+// above its ascent and half below its descent, on a whole point. The
+// caller releases it.
+//
+// TextKit sets a line's glyphs at the bottom of its line, and TextKit 2
+// takes a baseline offset off the line's height rather than raising its
+// glyphs. So a line ends at the glyphs' descent and its line spacing
+// adds the rest below it, in both TextKits, the text view's and the
+// placeholder label's.
+func lineParagraph(font objc.ID, align int, lineHeight float64) objc.ID {
+	para := objc.ID(apple.Class("NSMutableParagraphStyle")).Send(selAlloc).Send(sel("init"))
+	para.Send(selSetAlignment, align)
+	if lineHeight > 0 {
+		ascent, descent := objc.Send[float64](font, sel("ascender")), -objc.Send[float64](font, sel("descender"))
+		line := min(math.Round((lineHeight+ascent-descent)/2)+descent, lineHeight)
+		para.Send(sel("setMinimumLineHeight:"), line)
+		para.Send(sel("setMaximumLineHeight:"), line)
+		para.Send(sel("setLineSpacing:"), lineHeight-line)
+	}
+	return para
+}
+
+// setParagraph gives a text view's text, the text typed into it and the
+// text an input method marks in it the paragraph style para: unlike its
+// font and color, a text view's paragraph style reaches only the text
+// that carries it. A string set later takes the attributes of the text
+// it replaces, or the typing attributes.
+func (in *input) setParagraph(font, color, para objc.ID) {
+	a := textAttrs()
+	if a.paragraph == 0 {
+		return
+	}
+	tv := in.field
+	tv.Send(sel("setDefaultParagraphStyle:"), para)
+	tv.Send(sel("setTypingAttributes:"), attributes(font, color, para))
+	storage := tv.Send(sel("textStorage"))
+	storage.Send(sel("addAttribute:value:range:"), a.paragraph, para, apple.NSRange{Length: objc.Send[uint](storage, selLength)})
+}
+
 // setPlaceholder gives a field its placeholder in its font, color and
 // alignment: an attributed placeholder keeps to the start otherwise.
 func setPlaceholder(f objc.ID, text string, font objc.ID, color driver.Color, align int) {
@@ -815,17 +873,11 @@ func setPlaceholder(f objc.ID, text string, font objc.ID, color driver.Color, al
 		f.Send(selSetPlaceholder, apple.NSString(text))
 		return
 	}
-	attrs := objc.ID(apple.Class("NSMutableDictionary")).Send(sel("dictionary"))
-	attrs.Send(sel("setObject:forKey:"), font, a.font)
-	attrs.Send(sel("setObject:forKey:"), nsColor(color), a.color)
-	if a.paragraph != 0 {
-		para := objc.ID(apple.Class("NSMutableParagraphStyle")).Send(selAlloc).Send(sel("init"))
-		para.Send(selSetAlignment, align)
-		attrs.Send(sel("setObject:forKey:"), para, a.paragraph)
-		para.Send(selRelease)
-	}
+	para := objc.ID(apple.Class("NSMutableParagraphStyle")).Send(selAlloc).Send(sel("init"))
+	para.Send(selSetAlignment, align)
 	str := objc.ID(apple.Class("NSAttributedString")).Send(selAlloc).Send(
-		sel("initWithString:attributes:"), apple.NSString(text), attrs)
+		sel("initWithString:attributes:"), apple.NSString(text), attributes(font, nsColor(color), para))
+	para.Send(selRelease)
 	f.Send(sel("setPlaceholderAttributedString:"), str)
 	str.Send(selRelease)
 }
