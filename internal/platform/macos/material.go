@@ -167,6 +167,7 @@ func (v *view) setBackdrop(vs *driver.ViewStyle) {
 		if v.backdrop != 0 {
 			v.backdrop.Send(sel("removeFromSuperview"))
 			v.backdrop, v.backdropLayer, v.tint = 0, 0, 0
+			v.glassPress = 0
 			v.tintColor, v.tintStyled = 0, false
 		}
 		if !want {
@@ -200,6 +201,7 @@ func (v *view) setBackdrop(vs *driver.ViewStyle) {
 		v.surface.keepGlassActive()
 		v.backdrop.Send(sel("setStyle:"), int(vs.Glass)-1)
 		v.backdrop.Send(sel("setCornerRadius:"), float64(max(vs.CornerRadius, vs.Corners.TopLeft)))
+		v.interact(vs.GlassInteractive)
 		return
 	}
 	if gaussian {
@@ -218,6 +220,31 @@ func (v *view) setBackdrop(vs *driver.ViewStyle) {
 		v.backdrop.Send(sel("addSubview:"), v.tint)
 		v.tint.Send(selRelease)
 	}
+}
+
+// interact has v's glass answer a press as the system's own controls of glass do, which macOS 27's can. Its glass answers a press on its content view and the views in it, and none on a view beside it, which NSGo's children are. So the glass takes a content view of its own that draws nothing, the presses v takes itself go to it (pressView), and it hands them on to v; a press on a child of v stays the child's alone.
+func (v *view) interact(on bool) {
+	set := sel("setEffectIsInteractive:")
+	if on == (v.glassPress != 0) || !objc.Send[bool](v.backdrop, sel("respondsToSelector:"), set) {
+		return
+	}
+	v.backdrop.Send(set, on)
+	if !on {
+		v.backdrop.Send(sel("setContentView:"), objc.ID(0))
+		v.glassPress = 0
+		return
+	}
+	v.glassPress = objc.ID(classGlassPress).Send(selNew)
+	v.backdrop.Send(sel("setContentView:"), v.glassPress)
+	v.glassPress.Send(selRelease)
+}
+
+// pressView is the native view a press v takes goes to: its own, or the one in its glass while the glass answers presses (interact).
+func (v *view) pressView() objc.ID {
+	if v.glassPress != 0 {
+		return v.glassPress
+	}
+	return v.native
 }
 
 // styleTint draws the background above the blur, with the same transition and presentation-value retargeting as the view's own layer. Only color changes touch it, so frames moving other properties leave a tint's transition alone. A background binding takes over immediately.

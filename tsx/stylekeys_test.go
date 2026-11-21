@@ -149,6 +149,7 @@ func TestStyleKeysSetTheirFields(t *testing.T) {
 		},
 		`{maskImage: "linear-gradient(red, transparent)"}`: func(s core.Style) bool { return s.Mask != nil },
 		`{glassEffect: "clear"}`:                           func(s core.Style) bool { return s.GlassEffect == core.GlassClear },
+		`{glassEffect: "regular", glassInteractive: true}`: func(s core.Style) bool { return s.GlassInteractive },
 		`{mixBlendMode: "multiply"}`:                       func(s core.Style) bool { return s.BlendMode != 0 },
 		`{cursor: "text"}`:                                 func(s core.Style) bool { return s.Cursor != core.CursorAuto },
 		`{cursor: "no-such-cursor"}`:                       func(s core.Style) bool { return s.Cursor == core.CursorAuto },

@@ -93,6 +93,8 @@ type view struct {
 	tintColor       driver.Color
 	tintStyled      bool
 	glass, gaussian bool
+	// glassPress is the view in v's glass that takes v's presses while the glass answers them, else 0 (interact).
+	glassPress objc.ID
 
 	pressing  atomic.Bool
 	longFired atomic.Bool
@@ -396,6 +398,7 @@ var (
 	classOverlay                        objc.Class
 	classObserver, classMenuTarget      objc.Class
 	classMaterial, classWindow          objc.Class
+	classGlassPress                     objc.Class
 )
 
 // loadAppKit loads AppKit and registers NSGo's classes, once.
@@ -480,6 +483,11 @@ func loadAppKit() {
 		Cmd: sel("hitTest:"),
 		Fn:  func(objc.ID, objc.SEL, apple.CGPoint) objc.ID { return 0 },
 	}})
+	// What takes a view's presses inside its glass takes them as the view would, and hands them on to it.
+	classGlassPress = register("NsgoGlassPress", nsView, nil, []objc.MethodDef{
+		{Cmd: sel("acceptsFirstMouse:"), Fn: func(objc.ID, objc.SEL, objc.ID) bool { return true }},
+		{Cmd: sel("mouseDownCanMoveWindow"), Fn: func(objc.ID, objc.SEL) bool { return false }},
+	})
 	refresh := func(self objc.ID, cmd objc.SEL) {
 		apple.Super(self, cmd)
 		if v := views[self]; v != nil {
@@ -2328,7 +2336,7 @@ func hitTest(self objc.ID, cmd objc.SEL, p apple.CGPoint) objc.ID {
 				return hit // the player's controls
 			}
 			if (v.pressable() || v.events.Has(driver.EventPan)) && v.native == n {
-				return n
+				return v.pressView()
 			}
 		}
 	}

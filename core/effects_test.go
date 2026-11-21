@@ -47,6 +47,16 @@ func TestShapesResolve(t *testing.T) {
 	}
 }
 
+func TestInteractiveGlassReachesThePlatform(t *testing.T) {
+	s := Style{GlassEffect: GlassRegular}.Merge(Style{GlassInteractive: true})
+	if vs := s.viewStyle(Size{}, 0, false); vs.Glass != GlassRegular || !vs.GlassInteractive {
+		t.Errorf("glass %v, interactive %v, want interactive regular glass", vs.Glass, vs.GlassInteractive)
+	}
+	if vs := (&Style{GlassEffect: GlassRegular}).viewStyle(Size{}, 0, false); vs.GlassInteractive {
+		t.Error("glass answers presses unasked")
+	}
+}
+
 func TestTransformsResolveAgainstTheSize(t *testing.T) {
 	s := Style{Transform: Transform{TranslateXPercent: 50, TranslateY: 3, TranslateYPercent: -10},
 		TransformOrigin: ObjectPosition{X: PositionAxis{Offset: Pct(0)}, Y: PositionAxis{Offset: Pt(10)}},

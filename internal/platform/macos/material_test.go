@@ -261,3 +261,77 @@ func absDiff(a, b uint8) int {
 	}
 	return int(b - a)
 }
+
+// TestInteractiveGlassTakesThePressesOfItsView has a pressable view of interactive glass hold a pressable child. AppKit's glass answers a press only on its content view, so the view's own presses go to the view its glass holds, which hands them up to the view, and the child's stay the child's.
+func TestInteractiveGlassTakesThePressesOfItsView(t *testing.T) {
+	onMain(func() {
+		loadAppKit()
+		glass := objc.ID(apple.Class("NSGlassEffectView"))
+		if glass == 0 || !objc.Send[bool](glass, sel("instancesRespondToSelector:"), sel("setEffectIsInteractive:")) {
+			t.Skip("Liquid Glass answers presses from macOS 27")
+		}
+		s := &surface{}
+		makeView := func(parent *view, f driver.Bounds) *view {
+			n := objc.ID(classView).Send(selNew)
+			n.Send(selSetWantsLayer, true)
+			v := &view{native: n, content: n, surface: s, kind: driver.KindView, up: parent, frame: f, framed: true,
+				style: driver.ViewStyle{Opacity: 1}}
+			views[n] = v
+			n.Send(selSetFrame, apple.Rect(float64(f.Origin.X), float64(f.Origin.Y), float64(f.Size.Width), float64(f.Size.Height)))
+			if parent != nil {
+				parent.native.Send(selAddSubview, n)
+			}
+			t.Cleanup(func() { onMain(func() { delete(views, n); n.Send(selRelease) }) })
+			return v
+		}
+		root := makeView(nil, driver.Bounds{Size: driver.Size{Width: 400, Height: 400}})
+		button := makeView(root, driver.Bounds{Origin: driver.Point{X: 100, Y: 100}, Size: driver.Size{Width: 200, Height: 60}})
+		child := makeView(button, driver.Bounds{Origin: driver.Point{X: 150, Y: 10}, Size: driver.Size{Width: 40, Height: 40}})
+		button.events = driver.EventMask(1) << driver.EventPress
+		child.events = driver.EventMask(1) << driver.EventPress
+		onButton, onChild := apple.CGPoint{X: 130, Y: 130}, apple.CGPoint{X: 270, Y: 130}
+		hit := func(p apple.CGPoint) objc.ID { return root.native.Send(sel("hitTest:"), p) }
+		interactive := func() bool { return objc.Send[bool](button.backdrop, sel("effectIsInteractive")) }
+
+		vs := driver.ViewStyle{Opacity: 1, Glass: driver.GlassRegular, CornerRadius: 30}
+		button.setBackdrop(&vs)
+		if interactive() || hit(onButton) != button.native {
+			t.Fatalf("glass not asked to answer presses does, or takes its view's: interactive %v, hit %v, want the view %v", interactive(), hit(onButton), button.native)
+		}
+
+		vs.GlassInteractive = true
+		button.setBackdrop(&vs)
+		if !interactive() {
+			t.Fatal("the glass does not answer presses")
+		}
+		got := hit(onButton)
+		if got == 0 || !objc.Send[bool](got, sel("isDescendantOf:"), button.backdrop.Send(sel("contentView"))) {
+			t.Fatalf("the view's press goes to %v, want a view its glass holds, which the glass answers", got)
+		}
+		if !objc.Send[bool](got, sel("acceptsFirstMouse:"), objc.ID(0)) {
+			t.Fatal("the first press on a window in the back is lost on the glass, where the view takes it")
+		}
+		reaches := false
+		for r := got; r != 0 && !reaches; r = r.Send(sel("nextResponder")) {
+			reaches = r == button.native
+		}
+		if !reaches {
+			t.Fatal("the press does not go on from the glass to its view")
+		}
+		if got := hit(onChild); got != child.native {
+			t.Fatalf("a child's press goes to %v, want the child %v", got, child.native)
+		}
+
+		vs.GlassInteractive = false
+		button.setBackdrop(&vs)
+		if interactive() || hit(onButton) != button.native {
+			t.Fatal("glass told to stay still goes on answering presses, or taking its view's")
+		}
+		vs.GlassInteractive = true
+		button.setBackdrop(&vs)
+		button.setBackdrop(&driver.ViewStyle{Opacity: 1})
+		if got := hit(onButton); got != button.native {
+			t.Fatalf("with its glass gone the view's press goes to %v, want the view %v", got, button.native)
+		}
+	})
+}

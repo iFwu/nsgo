@@ -680,6 +680,8 @@ type ViewStyle struct {
 	// system's shadow under it where the style casts none.
 	Elevation Points
 	Glass     GlassEffect
+	// GlassInteractive has the glass answer a press the view takes, as the system's own controls of glass do, where the system's glass can: macOS 27.
+	GlassInteractive bool
 	// Effects are shadows, gradients, filters and masks, nil without any.
 	Effects *Effects
 	// Transition, when it has a duration, animates the change from the
