@@ -2550,7 +2550,7 @@ func mouseDown(self objc.ID, cmd objc.SEL, event objc.ID) {
 	}
 	if v == nil || !v.pressable() {
 		if v == nil || v.surface.pan == nil {
-			apple.Super(self, cmd, event)
+			passOn(self, cmd, event)
 		}
 		return
 	}
@@ -2580,7 +2580,7 @@ func mouseUp(self objc.ID, cmd objc.SEL, event objc.ID) {
 	panned := v != nil && v.surface.endPan(event)
 	if v == nil || !v.pressable() {
 		if !panned {
-			apple.Super(self, cmd, event)
+			passOn(self, cmd, event)
 		}
 		return
 	}
@@ -2595,6 +2595,15 @@ func mouseUp(self objc.ID, cmd objc.SEL, event objc.ID) {
 		e := v.pressAt
 		e.Kind, e.Index = driver.EventPress, v.indexAt(p)
 		v.report(e)
+	}
+}
+
+// passOn hands a mouse event the view took no part in to its next responder, its superview, as NSResponder does.
+// NSView's own handler gives it to the view behind instead, where a press on a popover's plain part would land on
+// the row under the popover.
+func passOn(self objc.ID, cmd objc.SEL, event objc.ID) {
+	if next := self.Send(sel("nextResponder")); next != 0 {
+		next.Send(cmd, event)
 	}
 }
 
