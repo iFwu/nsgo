@@ -229,8 +229,6 @@ type surface struct {
 	// embedded is set for a host's view (NewView): the host owns the
 	// window, its chrome and the menu bar.
 	embedded bool
-	// glassActive is set once the window keeps its glass active.
-	glassActive bool
 	// rtl is the app's direction (driver.ItemDirection), which AppKit's
 	// views and the menus the surface shows lay out in once directed.
 	rtl, directed bool
