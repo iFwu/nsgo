@@ -137,7 +137,7 @@
 - Pull a scroll view's offset back to its end in `nsgotest` when its content shrinks or its viewport grows past it, and report where it went, as macOS, Windows, Linux, Android and the web do, instead of leaving it past the end (#1020 by @iFwu).
 - Free a removed `Overlay`, `Modal`, `Position: Fixed` view or `Tooltip` bubble instead of the view hosting it keeping it, and through it the whole subtree it was in, for the life of the window, so rebuilding a view with a tooltip no longer grows memory (#1006 by @iFwu).
 - Pass `RequestAnimationFrame` callbacks the display's frame time on macOS, iOS, Android, the web, Linux, Windows, HarmonyOS and watchOS rather than when the engine got to the frame (on HarmonyOS only from a host built with the OpenHarmony SDK, as the committed host still gives the engine's clock until it is rebuilt), and tick Linux's animations from the display's `GdkFrameClock` rather than a 16 ms timer (#1048 by @houko).
-- Keep a keyed `List` row in its cell, with its measured size and, as the first visible row, its place on screen, when one update changes rows on both sides of it, instead of handing its cell to another row and building it again, which dropped what it held, such as a field's focus and its input method's composition (#NNN by @iFwu).
+- Keep a keyed `List` row in its cell, with its measured size and, as the first visible row, its place on screen, when one update changes rows on both sides of it, instead of handing its cell to another row and building it again, which dropped what it held, such as a field's focus and its input method's composition (#1146 by @iFwu).
 
 ## [0.2.0] - 2026-11-19
 
