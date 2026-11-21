@@ -93,8 +93,7 @@ type view struct {
 	tintColor       driver.Color
 	tintStyled      bool
 	glass, gaussian bool
-	// glassPress is the view in v's glass that takes v's presses while the glass answers them, else 0 (interact).
-	glassPress objc.ID
+	glassContent    objc.ID // holds the children while the glass answers presses
 
 	pressing  atomic.Bool
 	longFired atomic.Bool
@@ -398,7 +397,7 @@ var (
 	classOverlay                        objc.Class
 	classObserver, classMenuTarget      objc.Class
 	classMaterial, classWindow          objc.Class
-	classGlassPress                     objc.Class
+	classGlassContent                   objc.Class
 )
 
 // loadAppKit loads AppKit and registers NSGo's classes, once.
@@ -483,8 +482,9 @@ func loadAppKit() {
 		Cmd: sel("hitTest:"),
 		Fn:  func(objc.ID, objc.SEL, apple.CGPoint) objc.ID { return 0 },
 	}})
-	// What takes a view's presses inside its glass takes them as the view would, and hands them on to it.
-	classGlassPress = register("NsgoGlassPress", nsView, nil, []objc.MethodDef{
+	// The glass's content uses the same top-left coordinates and lets unhandled presses reach the view.
+	classGlassContent = register("NsgoGlassContent", nsView, nil, []objc.MethodDef{
+		{Cmd: sel("isFlipped"), Fn: func(objc.ID, objc.SEL) bool { return true }},
 		{Cmd: sel("acceptsFirstMouse:"), Fn: func(objc.ID, objc.SEL, objc.ID) bool { return true }},
 		{Cmd: sel("mouseDownCanMoveWindow"), Fn: func(objc.ID, objc.SEL) bool { return false }},
 	})
@@ -1873,7 +1873,7 @@ func (s *surface) apply(b *driver.MountBatch) {
 			v.native.Send(selRemoveFromSuperview)
 		case driver.ItemInsert:
 			v.up = s.views[it.Parent]
-			parent := s.views[it.Parent].content
+			parent := v.up.childHost()
 			if it.Before == 0 {
 				parent.Send(selAddSubview, v.native)
 			} else {
@@ -2336,9 +2336,12 @@ func hitTest(self objc.ID, cmd objc.SEL, p apple.CGPoint) objc.ID {
 				return hit // the player's controls
 			}
 			if (v.pressable() || v.events.Has(driver.EventPan)) && v.native == n {
-				return v.pressView()
+				return v.glassHost()
 			}
 		}
+	}
+	if v := views[hit]; v != nil && hit == v.native {
+		return v.glassHost()
 	}
 	return hit
 }
@@ -2370,7 +2373,19 @@ func reach(self objc.ID, cmd objc.SEL, p apple.CGPoint) objc.ID {
 		subs := self.Send(selSubviews)
 		for i := apple.Msg(subs, selCount); i > 0; i-- {
 			sub := subs.Send(selObjectAtIndex, i-1)
-			if hit = sub.Send(cmd, at); hit != 0 {
+			if sub == v.backdrop && v.glassContent != 0 {
+				// AppKit's glass would clip the hit search before NSGo could honor a child's overflow.
+				p := objc.Send[apple.CGPoint](v.glassContent, selConvertPoint, at, self)
+				kids := v.glassContent.Send(selSubviews)
+				for k := apple.Msg(kids, selCount); k > 0; k-- {
+					if hit = kids.Send(selObjectAtIndex, k-1).Send(cmd, p); hit != 0 {
+						break
+					}
+				}
+			} else {
+				hit = sub.Send(cmd, at)
+			}
+			if hit != 0 {
 				break
 			}
 		}

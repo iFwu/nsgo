@@ -128,7 +128,8 @@ func (s *surface) container(host *view) objc.ID {
 	c.Send(selSetFrame, objc.Send[apple.CGRect](host.native, selBounds))
 	const widthSizable, heightSizable = 2, 16
 	c.Send(sel("setAutoresizingMask:"), uint(widthSizable|heightSizable))
-	subs := host.native.Send(sel("subviews"))
+	parent := host.childHost()
+	subs := parent.Send(sel("subviews"))
 	n := objc.Send[uint](subs, sel("count"))
 	var children []objc.ID
 	for i := range n {
@@ -143,7 +144,7 @@ func (s *surface) container(host *view) objc.ID {
 		c.Send(selAddSubview, sub)
 		sub.Send(selRelease)
 	}
-	host.native.Send(selAddSubview, c)
+	parent.Send(selAddSubview, c)
 	c.Send(selRelease)
 	host.content = c
 	views[c] = host

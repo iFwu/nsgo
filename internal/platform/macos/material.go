@@ -165,9 +165,11 @@ func (v *view) setBackdrop(vs *driver.ViewStyle) {
 	want := glass || gaussian || vs.Effects.BackdropBlur() > 0
 	if !want || glass != v.glass || gaussian != v.gaussian {
 		if v.backdrop != 0 {
+			if v.glassContent != 0 {
+				v.interact(false)
+			}
 			v.backdrop.Send(sel("removeFromSuperview"))
 			v.backdrop, v.backdropLayer, v.tint = 0, 0, 0
-			v.glassPress = 0
 			v.tintColor, v.tintStyled = 0, false
 		}
 		if !want {
@@ -222,29 +224,55 @@ func (v *view) setBackdrop(vs *driver.ViewStyle) {
 	}
 }
 
-// interact has v's glass answer a press as the system's own controls of glass do, which macOS 27's can. Its glass answers a press on its content view and the views in it, and none on a view beside it, which NSGo's children are. So the glass takes a content view of its own that draws nothing, the presses v takes itself go to it (pressView), and it hands them on to v; a press on a child of v stays the child's alone.
+// AppKit's recognizer only sees presses inside the glass's content view.
 func (v *view) interact(on bool) {
 	set := sel("setEffectIsInteractive:")
-	if on == (v.glassPress != 0) || !objc.Send[bool](v.backdrop, sel("respondsToSelector:"), set) {
+	if on == (v.glassContent != 0) || !objc.Send[bool](v.backdrop, sel("respondsToSelector:"), set) {
 		return
 	}
 	v.backdrop.Send(set, on)
 	if !on {
+		v.moveGlassChildren(v.glassContent, v.native)
 		v.backdrop.Send(sel("setContentView:"), objc.ID(0))
-		v.glassPress = 0
+		v.glassContent = 0
 		return
 	}
-	v.glassPress = objc.ID(classGlassPress).Send(selNew)
-	v.backdrop.Send(sel("setContentView:"), v.glassPress)
-	v.glassPress.Send(selRelease)
+	v.glassContent = objc.ID(classGlassContent).Send(selAlloc).Send(sel("initWithFrame:"), objc.Send[apple.CGRect](v.native, selBounds))
+	v.glassContent.Send(selSetAutoresizingMask, widthHeightSizable)
+	v.backdrop.Send(sel("setContentView:"), v.glassContent)
+	v.glassContent.Send(selRelease)
+	v.moveGlassChildren(v.native, v.glassContent)
 }
 
-// pressView is the native view a press v takes goes to: its own, or the one in its glass while the glass answers presses (interact).
-func (v *view) pressView() objc.ID {
-	if v.glassPress != 0 {
-		return v.glassPress
+// Keep auxiliary views, such as the scroll indicator, outside the glass.
+func (v *view) moveGlassChildren(from, to objc.ID) {
+	subs := from.Send(selSubviews).Send(sel("copy"))
+	defer subs.Send(selRelease)
+	for i, count := uintptr(0), apple.Msg(subs, selCount); i < count; i++ {
+		sub := subs.Send(selObjectAtIndex, i)
+		if w := views[sub]; sub != v.content && (w == nil || w.up != v) {
+			continue
+		}
+		if to == v.native && v.sc != nil {
+			to.Send(selAddSubviewPositioned, sub, viewAbove, v.backdrop)
+		} else {
+			to.Send(selAddSubview, sub)
+		}
+	}
+}
+
+func (v *view) glassHost() objc.ID {
+	if v.glassContent != 0 {
+		return v.glassContent
 	}
 	return v.native
+}
+
+func (v *view) childHost() objc.ID {
+	if v.content != v.native {
+		return v.content
+	}
+	return v.glassHost()
 }
 
 // styleTint draws the background above the blur, with the same transition and presentation-value retargeting as the view's own layer. Only color changes touch it, so frames moving other properties leave a tint's transition alone. A background binding takes over immediately.
