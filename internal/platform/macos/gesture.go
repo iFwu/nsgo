@@ -71,7 +71,7 @@ func mouseDragged(self objc.ID, cmd objc.SEL, event objc.ID) {
 		v.surface.touch(event, func(s *surface, p driver.Point) (driver.Event, bool) { return s.mouse.Move(p) })
 	}
 	if v == nil || v.surface.pan == nil {
-		apple.Super(self, cmd, event)
+		passOn(self, cmd, event)
 		return
 	}
 	t := v.surface.pan
