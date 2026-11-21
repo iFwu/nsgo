@@ -262,6 +262,45 @@ func absDiff(a, b uint8) int {
 	return int(b - a)
 }
 
+// TestGlassLeavesTheWindowInactive gives a view in a window in the back Liquid Glass, and the window still looks as AppKit draws a window in the back: its traffic lights grey, as the app's other cues of an inactive window are.
+func TestGlassLeavesTheWindowInactive(t *testing.T) {
+	onMain(func() {
+		loadAppKit()
+		active := sel("_hasActiveAppearance")
+		if apple.Class("NSGlassEffectView") == 0 || !objc.Send[bool](objc.ID(classWindow), sel("instancesRespondToSelector:"), active) {
+			t.Skip("Liquid Glass comes with macOS 26")
+		}
+		pool := objc.ID(apple.Class("NSAutoreleasePool")).Send(selNew)
+		defer pool.Send(sel("drain"))
+		window := objc.ID(classWindow).Send(selAlloc).Send(sel("initWithContentRect:styleMask:backing:defer:"),
+			apple.Rect(200, 200, 200, 100), uint(styleTitled|styleClosable|styleMiniaturizable|styleResizable), uint(2), false)
+		window.Send(sel("setReleasedWhenClosed:"), false)
+		defer func() {
+			window.Send(sel("close"))
+			window.Send(selRelease)
+		}()
+		native := objc.ID(classView).Send(selNew)
+		native.Send(selSetWantsLayer, true)
+		native.Send(selSetFrame, apple.Rect(0, 0, 200, 100))
+		window.Send(sel("contentView")).Send(selAddSubview, native)
+		native.Send(selRelease)
+		v := &view{kind: driver.KindView, native: native, content: native, surface: &surface{window: window}}
+		views[native] = v
+		defer delete(views, native)
+		defer v.setBackdrop(&driver.ViewStyle{})
+		window.Send(sel("orderFrontRegardless"))
+		if objc.Send[bool](window, active) {
+			t.Skip("the window is in front here, so it looks active either way")
+		}
+
+		vs := driver.ViewStyle{Opacity: 1, Glass: driver.GlassRegular, CornerRadius: 12}
+		v.setBackdrop(&vs)
+		if objc.Send[bool](window, active) {
+			t.Fatal("a window in the back looks active once a view in it has Liquid Glass: its traffic lights stay coloured while another app is in front")
+		}
+	})
+}
+
 func TestInteractiveGlassAnswersChildPresses(t *testing.T) {
 	onMain(func() {
 		loadAppKit()

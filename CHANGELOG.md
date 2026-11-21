@@ -18,6 +18,7 @@
 - Keep a keyed `List` row in its cell, with its measured size and, as the first visible row, its place on screen, when one update changes rows on both sides of it, instead of handing its cell to another row and building it again, which dropped what it held, such as a field's focus and its input method's composition.
 - Add `Style.GlassInteractive`, and `glassInteractive` in TSX, which has a view's Liquid Glass answer presses on the view and its children on macOS 27, swelling under the pointer and springing back.
 - Report the original GIF in an input's `OnPaste` on macOS, even when the pasteboard also offers a still image.
+- Grey a macOS window's traffic lights while it is in the back or its app is not in front, as AppKit draws an inactive window, instead of keeping the whole window's main appearance once a view in it has Liquid Glass, which left them coloured; the glass is drawn inactive there too, as the system's own is.
 
 ## [0.2.0] - 2026-11-19
 
