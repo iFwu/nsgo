@@ -19,6 +19,7 @@
 - Add `Style.GlassInteractive`, and `glassInteractive` in TSX, which has a view's Liquid Glass answer presses on the view and its children on macOS 27, swelling under the pointer and springing back.
 - Report the original GIF in an input's `OnPaste` on macOS, even when the pasteboard also offers a still image.
 - Grey a macOS window's traffic lights while it is in the back or its app is not in front, as AppKit draws an inactive window, instead of keeping the whole window's main appearance once a view in it has Liquid Glass, which left them coloured; the glass is drawn inactive there too, as the system's own is.
+- Keep a keyed `List` row in place when rows are prepended while the viewport starts in its header.
 
 ## [0.2.0] - 2026-11-19
 
