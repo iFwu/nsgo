@@ -12,8 +12,28 @@ import (
 
 	"github.com/ebitengine/purego"
 
+	"github.com/nsgo-dev/nsgo/core"
 	"github.com/nsgo-dev/nsgo/internal/driver"
+	"github.com/nsgo-dev/nsgo/nsgotest"
 )
+
+func TestFittedColumnKeepsWrappedTextAboveNextItem(t *testing.T) {
+	app := nsgotest.Start(t, func(*core.Scope) core.Node {
+		return core.View{Style: core.Style{AlignItems: core.AlignEnd}, Children: []core.Node{
+			core.View{Style: core.Style{MaxWidth: core.Pt(62.5)}, Children: []core.Node{
+				core.View{Children: []core.Node{
+					core.Text{TestID: "text", Content: strings.Repeat("A。甲乙，丙丁", 4) + "下？",
+						Style: core.Style{Language: "zh-Hans", FontSize: 14.5, LineHeight: 23.2}},
+				}},
+			}},
+			core.View{TestID: "next", Style: core.Style{Width: core.Pt(10), Height: core.Pt(10)}},
+		}}
+	}, nsgotest.Size(240, 300), nsgotest.TextEngine(TextEngine{}), nsgotest.Environment(core.Environment{PixelRatio: 2}))
+	text, next := app.Find("id:text").Bounds(), app.Find("id:next").Bounds()
+	if bottom := text.Origin.Y + text.Size.Height; bottom > next.Origin.Y {
+		t.Fatalf("wrapped text ends at %v, next item starts at %v", bottom, next.Origin.Y)
+	}
+}
 
 // render draws text laid out at size into a white RGBA bitmap, as a
 // flipped view's drawing does.

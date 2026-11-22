@@ -872,6 +872,14 @@ func flexBaseSize(c *flexConstants, child *flexItem, available Size[AvailableSpa
 	}
 	childAvailable := maxContentSpaces.withMain(dir, mainAvailable).withCross(dir, crossAvailable)
 
+	if c.isColumn && child.sizeStyle.Width.IsAuto() && !childKnown.Width.Valid && crossAvailable.isDefinite() && !child.aspectRatio.Valid {
+		// A non-stretched item's fit-content width can be narrower than the
+		// space offered. Its text and percentage-width children wrap at that
+		// width, not the limit. A preferred aspect ratio couples the axes.
+		w := measureChildSize(child.node, childKnown, childParentSize, childAvailable, contentSize,
+			Horizontal, Line[bool]{})
+		childKnown.Width = Some(w).clamp(child.minSize.Width, child.maxSize.Width)
+	}
 	return measureChildSize(child.node, childKnown, childParentSize, childAvailable, contentSize, dir.mainAxis(),
 		Line[bool]{})
 }

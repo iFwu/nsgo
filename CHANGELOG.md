@@ -21,6 +21,7 @@
 - Grey a macOS window's traffic lights while it is in the back or its app is not in front, as AppKit draws an inactive window, instead of keeping the whole window's main appearance once a view in it has Liquid Glass, which left them coloured; the glass is drawn inactive there too, as the system's own is.
 - Keep a keyed `List` row in place when rows are prepended while the viewport starts in its header.
 - Move anchored overlays with scroll commands in the same commit, without waiting for a platform scroll report.
+- Keep the next item below a column item whose text wraps at its fit-content width.
 
 ## [0.2.0] - 2026-11-19
 
