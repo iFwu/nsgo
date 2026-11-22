@@ -2913,8 +2913,8 @@ func mouseEntered(self objc.ID, _ objc.SEL, event objc.ID) {
 		return
 	}
 	v.surface.inside[v] = struct{}{}
-	if v.sc != nil {
-		v.hovered()
+	if v.sc != nil && v.sc.alpha > 0 {
+		v.updateOverlay()
 	}
 	if !v.over && (event == 0 || covers(v, v.surface.hitAt(objc.Send[apple.CGPoint](event, selLocationInWindow)))) {
 		v.over = true
@@ -2947,8 +2947,8 @@ func mouseMoved(self objc.ID, _ objc.SEL, event objc.ID) {
 		return
 	}
 	defer v.surface.measuring(false)()
-	if v.sc != nil {
-		v.hovered()
+	if v.sc != nil && v.sc.alpha > 0 {
+		v.updateOverlay()
 	}
 	if !v.over {
 		return
@@ -3007,6 +3007,9 @@ func mouseExited(self objc.ID, _ objc.SEL, event objc.ID) {
 		return
 	}
 	delete(v.surface.inside, v)
+	if v.sc != nil && v.sc.thumbHovered {
+		v.updateOverlay()
+	}
 	if v.over {
 		v.over = false
 		v.mouse(driver.EventMouseLeave, event)

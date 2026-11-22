@@ -101,6 +101,72 @@ func TestAScrollUnderWayNeedsNoRouting(t *testing.T) {
 	check("momentum on an unmounted view", 0, phaseChanged, false)
 }
 
+func TestAnIdleTrackpadTouchDoesNotRevealTheIndicator(t *testing.T) {
+	onMain(func() {
+		loadAppKit()
+		s := &surface{native: objc.ID(classView).Send(selNew), animator: driver.NewAnimator(nil)}
+		defer s.native.Send(selRelease)
+		defer func() { s.closed = true }()
+		v := s.create(driver.KindScroll, 1)
+		defer v.native.Send(selRelease)
+		defer delete(views, v.native)
+		s.views = []*view{nil, v}
+		s.wheels.chain = []*view{v}
+		v.frame = driver.Bounds{Size: driver.Size{Width: 100, Height: 200}}
+		v.sc.content = driver.Size{Width: 100, Height: 1000}
+		v.sc.ticking = true
+		check := func(what string, want bool) {
+			t.Helper()
+			if shown := v.sc.thumb != 0 && !v.sc.drawn.hidden; shown != want {
+				t.Errorf("%s: indicator visible = %v, want %v", what, shown, want)
+			}
+		}
+
+		s.gestureEvent(phaseMayBegin, 0, 0, mediaTime())
+		check("fingers resting on the trackpad", false)
+		v.scrollBy(driver.Point{Y: 25}) // a virtual list keeps the same row in view
+		check("list anchor compensation while fingers rest", false)
+		s.gestureEvent(phaseCancelled, 0, 0, mediaTime())
+		check("fingers lifted without scrolling", false)
+
+		s.gestureEvent(phaseMayBegin, 0, 0, mediaTime())
+		s.gestureEvent(phaseBegan, 0, 0, mediaTime())
+		check("gesture began without a delta", false)
+		s.gestureEvent(phaseChanged, 0, 20, mediaTime())
+		if v.pos() != 45 {
+			t.Fatalf("trackpad scroll moved to %v, want 45", v.pos())
+		}
+		check("content scrolled", true)
+		s.gestureEvent(phaseEnded, 0, 0, mediaTime())
+		v.tickScroll(mediaTime() + time.Second)
+		check("idle after scrolling", false)
+
+		thumb, _, ok := v.thumbRect()
+		if !ok {
+			t.Fatal("scrollable content has no thumb")
+		}
+		p := thumb.Origin
+		if v.grabsThumb(p) {
+			t.Error("hidden thumb intercepted a mouse press")
+		}
+		v.wheelBy(0, 20, mediaTime())
+		thumb, _, _ = v.thumbRect()
+		if !v.grabsThumb(thumb.Origin) {
+			t.Fatal("revealed thumb could not be grabbed")
+		}
+		v.thumbBegin()
+		v.tickScroll(mediaTime() + 2*time.Second)
+		check("thumb held past idle", true)
+		v.thumbMove(driver.Point{Y: 20})
+		if v.pos() <= 65 {
+			t.Fatal("dragging the thumb did not scroll")
+		}
+		v.thumbEnd()
+		v.tickScroll(mediaTime() + time.Second)
+		check("idle after releasing the thumb", false)
+	})
+}
+
 // The indicator shows while the user scrolls, as AppKit's overlay scrollers do, and stays hidden while the app scrolls (#343).
 func TestTheIndicatorShowsOnlyForTheUsersScrolls(t *testing.T) {
 	onMain(func() {

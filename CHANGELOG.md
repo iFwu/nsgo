@@ -22,6 +22,7 @@
 - Keep a keyed `List` row in place when rows are prepended while the viewport starts in its header.
 - Move anchored overlays with scroll commands in the same commit, without waiting for a platform scroll report.
 - Keep the next item below a column item whose text wraps at its fit-content width.
+- Reveal a quieter macOS scroll indicator only after user scrolling, without flashing it on hover or list anchoring ([Lotra #279](https://git.nice.do/fwu/super-agent/issues/279)).
 
 ## [0.2.0] - 2026-11-19
 
