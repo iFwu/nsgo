@@ -1252,9 +1252,12 @@ func (t *Tree) listCommand(ln *listNode, c listCommand) {
 
 // scrollTo sends scroll view n to p, counting the scroll.
 func (t *Tree) scrollTo(n *node, p Point, animated bool) {
-	n.scroll.issue(true, p)
+	n.scroll.issue(true, animated, p)
 	t.commands = append(t.commands, driver.MountItem{Kind: driver.ItemScrollTo, ID: n.id, Point: p, Animated: animated})
 	t.changed = true
+	if !animated {
+		t.followAnchoredOverlays()
+	}
 }
 
 // scrolled records where the platform reports scroll view n is, for the
@@ -1299,11 +1302,15 @@ func (t *Tree) emitScrollBy(n *node, before bool) {
 			}
 			sc.offset.X += d.X
 			sc.offset.Y += d.Y
+			if !c.Animated {
+				t.followAnchoredOverlays()
+			}
 			return
 		}
 	}
-	sc.issue(false, d)
+	sc.issue(false, false, d)
 	t.items = append(t.items, driver.MountItem{Kind: driver.ItemScrollBy, ID: n.id, Point: d})
+	t.followAnchoredOverlays()
 }
 
 // emitScrollTo sends the scroll the lists in n's viewport asked for.
@@ -1320,8 +1327,11 @@ func (t *Tree) emitScrollTo(n *node) {
 	} else {
 		it.Point.Y = min(max(it.Point.Y, lo), hi)
 	}
-	sc.issue(true, it.Point)
+	sc.issue(true, it.Animated, it.Point)
 	t.commands = append(t.commands, it)
+	if !it.Animated {
+		t.followAnchoredOverlays()
+	}
 }
 
 // fenwick is a Fenwick tree of row sizes: prefix sums and the row at an
