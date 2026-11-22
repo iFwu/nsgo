@@ -1254,9 +1254,17 @@ func (t *Tree) listCommand(ln *listNode, c listCommand) {
 
 // scrollTo sends scroll view n to p, counting the scroll.
 func (t *Tree) scrollTo(n *node, p Point, animated bool) {
-	n.scroll.issue(true, p)
+	t.issueScroll(n.scroll, true, p)
 	t.commands = append(t.commands, driver.MountItem{Kind: driver.ItemScrollTo, ID: n.id, Point: p, Animated: animated})
 	t.changed = true
+}
+
+func (t *Tree) issueScroll(sc *scrollNode, to bool, p Point) {
+	before := sc.offset
+	sc.issue(to, p)
+	if sc.offset != before {
+		t.followAnchoredOverlays()
+	}
 }
 
 // scrolled records where the platform reports scroll view n is, for the
@@ -1301,10 +1309,11 @@ func (t *Tree) emitScrollBy(n *node, before bool) {
 			}
 			sc.offset.X += d.X
 			sc.offset.Y += d.Y
+			t.followAnchoredOverlays()
 			return
 		}
 	}
-	sc.issue(false, d)
+	t.issueScroll(sc, false, d)
 	t.items = append(t.items, driver.MountItem{Kind: driver.ItemScrollBy, ID: n.id, Point: d})
 }
 
@@ -1322,7 +1331,7 @@ func (t *Tree) emitScrollTo(n *node) {
 	} else {
 		it.Point.Y = min(max(it.Point.Y, lo), hi)
 	}
-	sc.issue(true, it.Point)
+	t.issueScroll(sc, true, it.Point)
 	t.commands = append(t.commands, it)
 }
 

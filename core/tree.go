@@ -2554,10 +2554,7 @@ func (t *Tree) Dispatch(ev driver.Event) {
 			if ev.Value > 0 {
 				n.scroll.zoom = ev.Value
 			}
-			if anchored(t.view) || slices.ContainsFunc(t.frames, anchored) {
-				t.markLayout(t.view) // anchored overlays follow the scroll
-				t.changed = true
-			}
+			t.followAnchoredOverlays()
 			if t.auditRead != nil && t.auditRead() {
 				t.framesMoved, t.changed = true, true
 			}

@@ -136,6 +136,13 @@ func anchored(host *node) bool {
 	return false
 }
 
+func (t *Tree) followAnchoredOverlays() {
+	if anchored(t.view) || slices.ContainsFunc(t.frames, anchored) {
+		t.markLayout(t.view)
+		t.changed = true
+	}
+}
+
 type modalSize struct {
 	size   Size
 	insets Edges

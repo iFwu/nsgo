@@ -7,6 +7,35 @@ import (
 	"github.com/nsgo-dev/nsgo/internal/driver"
 )
 
+func TestAnchoredOverlayFollowsScrollCommand(t *testing.T) {
+	var scroll, anchor Ref
+	h := newHost(t, Size{Width: 300, Height: 300}, func(*Scope) Node {
+		return View{Children: []Node{
+			Scroll{Ref: &scroll, Style: Style{Height: Pt(200)}, Children: []Node{
+				View{Style: Style{Height: Pt(100)}},
+				View{Ref: &anchor, Style: Style{Height: Pt(20)}},
+				View{Style: Style{Height: Pt(600)}},
+			}},
+			Overlay{Anchor: &anchor, Placement: PlaceBottom, TestID: "popup",
+				Style: Style{Width: Pt(80), Height: Pt(30)}},
+		}}
+	})
+	h.commit()
+	popup := h.find("popup")
+	if y := popup.frame.Origin.Y; y != 120 {
+		t.Fatalf("popup starts at %v, want 120", y)
+	}
+
+	scroll.ScrollTo(Point{Y: 40}, false)
+	b := h.commit()
+	for _, item := range b.Items {
+		if item.Kind == driver.ItemFrame && item.ID == popup.id && item.Frame.Origin.Y == 80 {
+			return
+		}
+	}
+	t.Fatalf("scroll command did not move the anchored popup to Y=80: %v", popup.frame)
+}
+
 // newOverlays runs app on a platform that opens no windows, as Android's: the first tree is the app's view, and the surfaces it opens commit on their own.
 func newOverlays(t *testing.T, os OS, app func(cx *Scope) Node) *windows {
 	w := &windows{t: t, items: map[uint32][]driver.MountItem{}}
