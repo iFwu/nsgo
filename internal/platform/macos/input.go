@@ -470,12 +470,14 @@ func (in *input) changed() {
 
 // selectionMoved hears the editor's selection change. Marking text does
 // not report the change of the text, but moves the selection: a text an
-// input method marks is reported from here.
+// input method marks is reported from here, and so is the removal of what
+// it marked as it drops its composition (marking nothing, as on Escape or
+// a switch of input source), after which no textDidChange comes either.
 func (in *input) selectionMoved() {
 	if in == nil {
 		return
 	}
-	if _, ok := in.markedText(); ok && !in.applying && in.text() != in.fs.Known() {
+	if _, ok := in.markedText(); (ok || in.fs.Composing()) && !in.applying && in.text() != in.fs.Known() {
 		in.changed()
 		return
 	}

@@ -23,6 +23,7 @@
 - Move anchored overlays with scroll commands in the same commit, without waiting for a platform scroll report.
 - Keep the next item below a column item whose text wraps at its fit-content width.
 - Reveal a quieter macOS scroll indicator only after user scrolling, without flashing it on hover or list anchoring ([Lotra #279](https://git.nice.do/fwu/super-agent/issues/279)).
+- Report a macOS input's text and the end of its composition when the input method drops what it marked, marking nothing as on Escape, on Backspace over its last letter or on a switch of input source, instead of going on reporting the dropped text and a composition that never ended ([Lotra #220](https://git.nice.do/fwu/super-agent/issues/220)).
 
 ## [0.2.0] - 2026-11-19
 
