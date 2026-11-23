@@ -275,6 +275,7 @@ func TestDirectionMirrorsNativeControlsInLiveWindow(t *testing.T) {
 					err = fmt.Errorf("scroll view has no vertical thumb")
 					return
 				}
+				sc.showIndicator()
 				if rtl {
 					if thumb.Origin.X != scrollbar.Inset {
 						err = fmt.Errorf("RTL scroll thumb X = %v, want %v", thumb.Origin.X, scrollbar.Inset)

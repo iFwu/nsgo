@@ -123,11 +123,11 @@ type scrollState struct {
 	// ticking says the view runs on the frame clock; report that the
 	// offset moved since it was last reported.
 	ticking, report bool
-	// The indicator: when it last showed, its opacity and whether it
-	// shows for a dark appearance.
-	shown time.Duration
-	alpha float32
-	dark  bool
+	// The indicator: when it last showed, its opacity, appearance and whether the pointer is holding it open.
+	shown        time.Duration
+	alpha        float32
+	dark         bool
+	thumbHovered bool
 	// refreshing shows the spinner, turned spin radians.
 	refreshing bool
 	spin       float64
@@ -297,13 +297,17 @@ func (v *view) moveTo(pos driver.Points) {
 
 // moveZoom is moveTo of an offset along both axes at zoom z.
 func (v *view) moveZoom(at driver.Point, z float64) {
+	v.placeZoom(at, z, v.userScrolling())
+}
+
+func (v *view) placeZoom(at driver.Point, z float64, showIndicator bool) {
 	s := v.sc
 	if s.at == at && s.zoom == z {
 		return
 	}
 	pos := v.main(at)
 	s.at, s.zoom = at, z
-	if v.userScrolling() {
+	if showIndicator {
 		v.showIndicator()
 	}
 	s.report = true
@@ -603,7 +607,7 @@ func (v *view) tickScroll(t time.Duration) bool {
 	overlays := false
 	if k == onThumb {
 		s.shown = t // a held thumb stays until let go
-	} else if s.alpha > 0 {
+	} else if s.alpha > 0 && !s.thumbHovered {
 		if a := scrollbar.IndicatorAlpha(t - s.shown); a != s.alpha {
 			s.alpha, overlays = a, true
 		}
@@ -770,7 +774,7 @@ func (v *view) configureScroll(c *driver.ScrollConfig) {
 	zoomed, scale := oldCfg.Zooms(), oldCfg.ZoomScale
 	s.config = *c
 	if !v.indicates() {
-		s.alpha = 0
+		s.alpha, s.thumbHovered = 0, false
 	}
 	if c.Behavior.NoScroll && (s.phase.kind == onThumb || s.phase.kind == wheeling) {
 		s.phase = scrollPhase{}
@@ -897,12 +901,14 @@ func (v *view) scrollBy(d driver.Point) {
 		p.to += by
 	}
 	s.resampled.Shift(by)
+	at := s.at
 	if v.zooms() {
 		s.phase.rawAt.X, s.phase.rawAt.Y = s.phase.rawAt.X+d.X, s.phase.rawAt.Y+d.Y
-		v.moveZoom(driver.Point{X: s.at.X + d.X, Y: s.at.Y + d.Y}, s.zoom)
-	} else if by != 0 {
-		v.moveTo(v.pos() + by)
+		at.X, at.Y = at.X+d.X, at.Y+d.Y
+	} else {
+		v.setMain(&at, v.pos()+by)
 	}
+	v.placeZoom(at, s.zoom, false)
 	v.reportScroll()
 }
 
@@ -1184,10 +1190,9 @@ func (v *view) bar() scrollbar.Bar {
 		Content: driver.Size{Width: s.content.Width * z, Height: s.content.Height * z}, Offset: s.at, Inset: s.config.Behavior.ContentInset}
 }
 
-// grabsThumb reports whether a mouse press at p, in the view, grabs the
-// indicator, faded out or not: on the desktop it is a scroll bar.
+// grabsThumb reports whether p is within reach of the visible thumb.
 func (v *view) grabsThumb(p driver.Point) bool {
-	if !v.indicates() || v.sc.config.Behavior.NoScroll {
+	if v.sc.alpha == 0 || !v.indicates() || v.sc.config.Behavior.NoScroll {
 		return false
 	}
 	r, _, ok := v.thumbRect()
@@ -1246,35 +1251,27 @@ func (v *view) thumbEnd() {
 	v.release(0, 0)
 }
 
-// whenScrolling caches whether the user shows scroll bars only while
-// scrolling, read again at most once a second.
-var whenScrolling struct {
-	on   bool
-	read time.Time
-}
-
-// hovered shows the indicator while the pointer is over the view, unless
-// the user shows it only while scrolling.
-func (v *view) hovered() {
-	if time.Since(whenScrolling.read) > time.Second {
-		defaults := objc.ID(apple.Class("NSUserDefaults")).Send(sel("standardUserDefaults"))
-		whenScrolling.on = apple.GoString(defaults.Send(sel("stringForKey:"), apple.NSString("AppleShowScrollBars"))) == "WhenScrolling"
-		whenScrolling.read = time.Now()
-	}
+// trackThumbHover keeps the thumb visible while it is under the pointer without revealing a hidden one.
+func (v *view) trackThumbHover() {
 	s := v.sc
-	if whenScrolling.on || !v.indicates() || s.config.Behavior.NoScroll {
+	if s.alpha == 0 {
 		return
 	}
-	if _, _, ok := v.thumbRect(); !ok {
-		return
+	over := false
+	if _, inside := v.surface.inside[v]; inside && v.surface.window != 0 {
+		loc := objc.Send[apple.CGPoint](v.surface.window, sel("mouseLocationOutsideOfEventStream"))
+		p := objc.Send[apple.CGPoint](v.native, selConvertPoint, loc, objc.ID(0))
+		over = v.grabsThumb(driver.Point{X: driver.Points(p.X), Y: driver.Points(p.Y)})
 	}
-	s.shown = mediaTime()
-	if s.alpha == 1 {
-		return
+	if over != s.thumbHovered {
+		s.thumbHovered = over
+		s.shown = mediaTime()
+		if over {
+			s.alpha = 1
+		} else {
+			v.tickOn()
+		}
 	}
-	s.alpha, s.dark = 1, v.surface.env.Dark
-	v.updateOverlay()
-	v.tickOn()
 }
 
 // The overlay: the indicator and the refresh spinner.
@@ -1319,6 +1316,7 @@ func (v *view) overlayLayer() objc.ID {
 // offset.
 func (v *view) updateOverlay() {
 	s := v.sc
+	v.trackThumbHover()
 	look := indicatorLook{hidden: true}
 	if s.alpha > 0 && v.indicates() {
 		if frame, _, ok := v.thumbRect(); ok {
