@@ -57,9 +57,11 @@ const (
 	restWait    = time.Second
 	// A press within thumbGrab of the edge and thumbSlop of the
 	// indicator's ends grabs it, as it is thinner than a pointer is
-	// precise. Its thickness, inset and margins are scrollbar's.
-	thumbGrab driver.Points = 12
-	thumbSlop driver.Points = 4
+	// precise. Its inset and margins are scrollbar's; it draws
+	// thumbThickness thick, at the edge of scrollbar's.
+	thumbGrab      driver.Points = 12
+	thumbSlop      driver.Points = 4
+	thumbThickness driver.Points = 5
 )
 
 // phaseMayBegin is the NSEvent phase of fingers resting on the trackpad
@@ -1179,7 +1181,21 @@ func (v *view) catch() bool {
 // thumbRect returns the indicator's frame in the view and how far it
 // travels along its track, or false when the content fits.
 func (v *view) thumbRect() (driver.Bounds, driver.Points, bool) {
-	return v.bar().Indicator()
+	r, travel, ok := v.bar().Indicator()
+	if !ok {
+		return r, travel, ok
+	}
+	switch {
+	case v.sc.config.Horizontal:
+		r.Origin.Y += r.Size.Height - thumbThickness
+		r.Size.Height = thumbThickness
+	case v.surface != nil && v.surface.rtl:
+		r.Size.Width = thumbThickness
+	default:
+		r.Origin.X += r.Size.Width - thumbThickness
+		r.Size.Width = thumbThickness
+	}
+	return r, travel, ok
 }
 
 // bar returns the view's scroll bar, as the shared geometry lays it out.
@@ -1353,7 +1369,7 @@ func (v *view) updateOverlay() {
 			old := s.drawn
 			if s.thumb == 0 {
 				s.thumb = v.overlayLayer()
-				s.thumb.Send(sel("setCornerRadius:"), float64(scrollbar.Thickness)/2)
+				s.thumb.Send(sel("setCornerRadius:"), float64(thumbThickness)/2)
 				old = indicatorLook{alpha: -1, dark: !look.dark, hidden: true}
 			}
 			f := look.frame
@@ -1364,7 +1380,7 @@ func (v *view) updateOverlay() {
 				s.thumb.Send(sel("setPosition:"), apple.CGPoint{X: float64(f.Origin.X), Y: float64(f.Origin.Y)})
 			}
 			if !look.hidden && look.dark != old.dark {
-				color := gray(0, 0.45)
+				color := gray(0, 0.28)
 				if look.dark {
 					color = gray(1, 0.55)
 				}
