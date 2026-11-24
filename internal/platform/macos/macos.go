@@ -93,10 +93,10 @@ type view struct {
 	backdrop, backdropLayer objc.ID
 	// tint is the view's background over its backdrop blur.
 	tint objc.ID
-	// glassContent is Liquid Glass's content view, which holds the per-side borders above the glass and receives hit-tested presses when glassInteractive is set.
-	glassContent                      objc.ID
-	tintState                         apple.BackdropTint
-	glass, gaussian, glassInteractive bool
+	// glassContent is Liquid Glass's content view, which holds the per-side borders above the glass and receives hit-tested presses when glassInteractive is set; glassHolds says it holds the view's children too (holdInGlass).
+	glassContent                                  objc.ID
+	tintState                                     apple.BackdropTint
+	glass, gaussian, glassInteractive, glassHolds bool
 
 	pressing  atomic.Bool
 	longFired atomic.Bool
@@ -2527,7 +2527,7 @@ func (s *surface) apply(b *driver.MountBatch) {
 			v.native.Send(selRemoveFromSuperview)
 		case driver.ItemInsert:
 			v.up = s.views[it.Parent]
-			parent := s.views[it.Parent].content
+			parent := s.views[it.Parent].childHost()
 			if it.Before == 0 {
 				parent.Send(selAddSubview, v.native)
 			} else {
@@ -3089,7 +3089,12 @@ func reach(self objc.ID, cmd objc.SEL, p apple.CGPoint) objc.ID {
 		subs := self.Send(selSubviews)
 		for i := apple.Msg(subs, selCount); i > 0; i-- {
 			sub := subs.Send(selObjectAtIndex, i-1)
-			if hit = sub.Send(cmd, at); hit != 0 {
+			if sub == v.backdrop && v.glassHolds {
+				hit = v.reachGlassChildren(cmd, at)
+			} else {
+				hit = sub.Send(cmd, at)
+			}
+			if hit != 0 {
 				break
 			}
 		}

@@ -58,7 +58,7 @@ func (s *surface) container(host *view) objc.ID {
 	if host.content != host.native {
 		return host.content
 	}
-	c := apple.NewChildContainer(host.native, objc.ID(classView), true, func(sub objc.ID) bool {
+	c := apple.NewChildContainer(host.childHost(), objc.ID(classView), true, func(sub objc.ID) bool {
 		w := views[sub]
 		return w != nil && w.up == host || sub == host.componentView ||
 			host.input != nil && (sub == host.input.host || sub == host.input.label)
