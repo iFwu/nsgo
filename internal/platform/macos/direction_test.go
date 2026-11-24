@@ -285,7 +285,7 @@ func TestDirectionMirrorsNativeControlsInLiveWindow(t *testing.T) {
 						return
 					}
 				} else {
-					wantX := sc.frame.Size.Width - scrollbar.Inset - scrollbar.Thickness
+					wantX := sc.frame.Size.Width - scrollbar.Inset - thumbThickness
 					if thumb.Origin.X != wantX {
 						err = fmt.Errorf("LTR scroll thumb X = %v, want %v", thumb.Origin.X, wantX)
 						return
