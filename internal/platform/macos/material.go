@@ -165,6 +165,7 @@ func (v *view) setBackdrop(vs *driver.ViewStyle) {
 	if !want || glass != v.glass || gaussian != v.gaussian {
 		apple.MoveBorders(v.native.Send(selLayer), 0)
 		if v.backdrop != 0 {
+			v.holdInGlass(false)
 			v.backdrop.Send(sel("removeFromSuperview"))
 			v.backdrop, v.backdropLayer, v.tint, v.glassContent = 0, 0, 0, 0
 			v.tintState.Reset()
@@ -212,6 +213,8 @@ func (v *view) setBackdrop(vs *driver.ViewStyle) {
 			v.glassContent.Send(selRelease)
 		}
 		apple.MoveBorders(v.native.Send(selLayer), v.borderHost())
+		// After the borders, so the children draw over them.
+		v.holdInGlass(interactive)
 		return
 	}
 	v.glassInteractive = false
@@ -230,6 +233,61 @@ func (v *view) setBackdrop(vs *driver.ViewStyle) {
 		v.tint.Send(selRelease)
 	}
 	apple.MoveBorders(v.native.Send(selLayer), v.borderHost())
+}
+
+// holdInGlass moves a plain view's children into its glass's content view while the glass answers presses, and back out: AppKit's interactive glass answers only presses on the views its content view holds, so a press a child takes swells the glass too, while the child keeps its own press.
+func (v *view) holdInGlass(on bool) {
+	on = on && v.kind == driver.KindView
+	if on == v.glassHolds {
+		return
+	}
+	v.glassHolds = on
+	if on {
+		v.moveChildren(v.native, v.glassContent, 0)
+	} else {
+		v.moveChildren(v.glassContent, v.native, v.backdrop)
+	}
+}
+
+// moveChildren moves v's children, or the holder of its content, from one native view to another in their order, the first above after unless it is zero; what else from holds stays.
+func (v *view) moveChildren(from, to, after objc.ID) {
+	subs := from.Send(selSubviews).Send(sel("copy"))
+	defer subs.Send(selRelease)
+	for i, n := uintptr(0), apple.Msg(subs, selCount); i < n; i++ {
+		sub := subs.Send(selObjectAtIndex, i)
+		if w := views[sub]; sub != v.content && (w == nil || w.up != v) {
+			continue
+		}
+		if after == 0 {
+			to.Send(selAddSubview, sub)
+			continue
+		}
+		to.Send(selAddSubviewPositioned, sub, viewAbove, after)
+		after = sub
+	}
+}
+
+// childHost is the native view v's children go in: the holder of its content, else its glass's content view while that holds them (holdInGlass), else v's own.
+func (v *view) childHost() objc.ID {
+	switch {
+	case v.content != v.native:
+		return v.content
+	case v.glassHolds:
+		return v.glassContent
+	}
+	return v.native
+}
+
+// reachGlassChildren is the child of v its glass holds that a hit at at, in v's coordinates, lands on: the glass's content view lets no hit through itself (classGlassContent), and AppKit's glass would cut the search off at its own frame where a child reaches outside it.
+func (v *view) reachGlassChildren(cmd objc.SEL, at apple.CGPoint) objc.ID {
+	p := objc.Send[apple.CGPoint](v.glassContent, selConvertPoint, at, v.native)
+	kids := v.glassContent.Send(selSubviews)
+	for i := apple.Msg(kids, selCount); i > 0; i-- {
+		if hit := kids.Send(selObjectAtIndex, i-1).Send(cmd, p); hit != 0 {
+			return hit
+		}
+	}
+	return 0
 }
 
 // newBorderHost returns a layer-backed view of class filling backdrop, with the same coordinate orientation as NSGo's views.
