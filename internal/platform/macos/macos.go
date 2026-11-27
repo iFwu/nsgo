@@ -2182,6 +2182,13 @@ func (s *surface) apply(b *driver.MountBatch) {
 	if b.LayoutAnimation != nil && !s.motionReduced() {
 		lb = &layoutBatch{Animation: b.LayoutAnimation, Created: map[driver.NodeID]bool{}, Deleted: map[objc.ID]bool{}}
 	}
+	// Row frames and their anchoring scroll must reach the display in the same transaction.
+	if s.native.Send(selWindow) != 0 {
+		transaction := objc.ID(apple.Class("CATransaction"))
+		transaction.Send(sel("begin"))
+		transaction.Send(sel("setDisableActions:"), true)
+		defer transaction.Send(sel("commit"))
+	}
 	for i := range b.Items {
 		it := &b.Items[i]
 		switch it.Kind {
