@@ -227,6 +227,92 @@ func TestSidebarShellFixed(t *testing.T) {
 	}
 }
 
+// TestSidebarShellPeek floats the closed sidebar as a card while the
+// pointer rests at the window's start, the content staying where it is,
+// sends the card back once the pointer moves on to the content, and docks
+// it when the toggle opens the sidebar under it.
+func TestSidebarShellPeek(t *testing.T) {
+	var asked []bool
+	open := false
+	pressed := 0
+	app, _ := shell(t, windowEnv, func(cx *core.Scope) core.Node {
+		o, p := core.NewSignal(cx, false), core.NewSignal(cx, false)
+		return SidebarShell{TestID: "shell", ToggleLabel: "Toggle sidebar", DefaultWidth: 240,
+			Open: o.Get, OnOpenChange: func(v bool) { open = v; o.Set(v) },
+			Peek: p.Get, OnPeekChange: func(v bool) { asked = append(asked, v); p.Set(v) },
+			Sidebar: []core.Node{Button{Text: "Inbox", OnPress: func() { pressed++ }}},
+			Header:  []core.Node{core.Text{Content: "Title", TestID: "title"}},
+			Content: []core.Node{core.Text{Content: "Body"}}}
+	})
+	onContent := func() { app.HoverAt("content", driver.Point{X: 600, Y: 400}) }
+	want := func(what string, w ...bool) {
+		t.Helper()
+		if fmt.Sprint(asked) != fmt.Sprint(w) {
+			t.Fatalf("%s: asked for %v, want %v", what, asked, w)
+		}
+	}
+	if app.Exists("role:button Inbox") {
+		t.Fatal("the closed sidebar shows")
+	}
+
+	app.Hover("sidebar-peek-edge")
+	app.Advance(peekDwell / 2)
+	want("passing the edge")
+	app.Advance(peekDwell)
+	want("resting on the edge", true)
+	app.Advance(time.Second)
+	panel := app.Find("sidebar-panel")
+	if gx, gy := x(app, "shell", panel), y(app, "shell", panel); gx != peekInset || gy != peekInset || panel.Frame.Size.Width != 240 {
+		t.Fatalf("card at %v,%v %v wide, want %v from the edges and 240 wide", gx, gy, panel.Frame.Size.Width, peekInset)
+	}
+	if got := app.Animated("sidebar-panel").Transform.TranslateX; got != 0 {
+		t.Fatalf("card rests %v off", got)
+	}
+	if got := y(app, "shell", app.Find("sidebar-header")); got != 0 {
+		t.Fatalf("card's header at %v, want level with the window controls", got)
+	}
+	if got := x(app, "shell", app.Find("content")); got != 0 {
+		t.Fatalf("content moved to %v under the card", got)
+	}
+	app.Press("role:button Inbox")
+	if pressed != 1 {
+		t.Fatal("the card took no press")
+	}
+
+	onContent()
+	app.Advance(peekLinger / 2)
+	app.Hover("sidebar-panel")
+	app.Advance(time.Second)
+	want("coming back to the card", true)
+	onContent()
+	app.Advance(peekLinger)
+	want("moving on to the content", true, false)
+	app.Advance(time.Second)
+	if app.Exists("role:button Inbox") {
+		t.Fatal("the card stayed")
+	}
+
+	app.Hover("sidebar-peek-edge")
+	app.Advance(time.Second)
+	app.Press("role:button Toggle sidebar")
+	want("docking", true, false, true, false)
+	app.Advance(time.Second)
+	if !open || x(app, "shell", app.Find("sidebar-panel")) != 0 || within(app.Find("shell"), "sidebar-slot").Frame.Size.Width != 240 {
+		t.Fatal("the toggle left the card floating")
+	}
+	if got := x(app, "shell", app.Find("content")); got != 240 {
+		t.Fatalf("content at %v, want beside the docked sidebar", got)
+	}
+	if app.Exists("sidebar-peek-edge") {
+		t.Fatal("the open sidebar keeps an edge to peek from")
+	}
+	app.Press("role:button Toggle sidebar")
+	app.Advance(time.Second)
+	if app.Exists("role:button Inbox") {
+		t.Fatal("closing the docked card left it showing")
+	}
+}
+
 // TestSidebarShellInset floats the content as a card with a margin that
 // goes as the sidebar hides and an edge that fades as the last of it
 // does, the window controls following it a frame at a time.
