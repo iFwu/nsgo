@@ -3,11 +3,13 @@
 package apple
 
 import (
+	"fmt"
 	"image"
 	"image/png"
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf16"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -494,5 +496,45 @@ func TestHiddenSpansSkipped(t *testing.T) {
 	}
 	if d, r := inked(imgMix, image.Rect(int(hideStart.Origin.X), 0, 220, 48)); d != 0 || r != 0 {
 		t.Errorf("hidden span with underline and shadow drew %d dark and %d red pixels", d, r)
+	}
+}
+
+// TestEmptyLineAfterHangingPunctuation lays out a paragraph whose last character, a CJK full stop, CoreText hangs past the frame's edge, then an empty line: the framesetter takes both breaks into the hanging line unless the empty line holds a character. At the paragraph's own width, as a text sized to its content is laid, and at the widths around it, the empty line stays a line of its own that the caret reaches, and the text's offsets stay the text's.
+func TestEmptyLineAfterHangingPunctuation(t *testing.T) {
+	const first = "可以，你帮我转一下，或者你总结一下那边的信息，然后开一个新的 worker 吧。"
+	style := driver.TextStyle{Font: driver.Font{Size: 14.5}, LineHeight: 23.2, Color: driver.RGB(0)}
+	p := TextEngine{}.Prepare(&driver.AttributedText{Text: first, Style: style})
+	fits := p.Measure(driver.Auto).Width
+	p.Release()
+	units := len(utf16.Encode([]rune(first)))
+	for _, sep := range []string{"\n", "\r\n", "\u2029"} {
+		for _, extra := range []driver.Points{0, 0.5, 3, 7, 20} {
+			text := first + sep + sep + "因为这毕竟是一个新的独立的任务。"
+			p := TextEngine{}.Prepare(&driver.AttributedText{Text: text, Style: style})
+			size := p.Measure(fits + extra)
+			// A box sized to its content gets no wider than the width it had.
+			l := p.Layout(driver.Size{Width: min(size.Width, fits+extra), Height: size.Height}).(*Layout)
+			lines := l.TextLines()
+			blank := -1
+			for i, line := range lines {
+				if text[line.Start:line.End] == sep {
+					blank = i
+				}
+			}
+			name := fmt.Sprintf("%q at %v+%v points", sep, fits, extra)
+			if blank != 1 || lines[len(lines)-1].End != len(text) {
+				t.Errorf("%s: lines %+v of %d bytes, want the empty line second and the text to its end", name, lines, len(text))
+			} else if want := driver.Points(23.2 * float64(len(lines))); size.Height < want-1 {
+				t.Errorf("%s: %d lines measure %v points tall, want %v", name, len(lines), size.Height, want)
+			} else {
+				b := lines[1].Bounds
+				// The empty line's break is at the text's UTF-16 offset past the paragraph and its break.
+				if c := l.HitTest(driver.Point{X: b.Origin.X + 40, Y: b.Origin.Y + b.Size.Height/2}); c.Offset != units+len(utf16.Encode([]rune(sep))) {
+					t.Errorf("%s: a press on the empty line puts the caret at %+v, want offset %d", name, c, units+len(utf16.Encode([]rune(sep))))
+				}
+			}
+			l.Release()
+			p.Release()
+		}
 	}
 }
