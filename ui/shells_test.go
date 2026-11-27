@@ -74,6 +74,7 @@ func y(app *nsgotest.App, selector string, v *nsgotest.View) core.Points {
 func TestSidebarShell(t *testing.T) {
 	open := true
 	var width core.Points = 240
+	var laid []core.Points
 	app, p := shell(t, windowEnv, func(cx *core.Scope) core.Node {
 		o, w := core.NewSignal(cx, open), core.NewSignal(cx, width)
 		return SidebarShell{TestID: "shell", ToggleLabel: "Toggle sidebar", ResizeLabel: "Resize sidebar",
@@ -83,7 +84,8 @@ func TestSidebarShell(t *testing.T) {
 			SidebarFooter: []core.Node{Button{Text: "Settings"}},
 			Header:        []core.Node{core.Text{Content: "Inbox", TestID: "title"}},
 			Actions:       []core.Node{Button{Text: "Compose"}},
-			Content:       []core.Node{core.Text{Content: "Body"}}}
+			Content: []core.Node{core.View{Style: FillRest, OnLayout: func(b core.Bounds) { laid = append(laid, b.Size.Width) },
+				Children: []core.Node{core.Text{Content: "Body"}}}}}
 	})
 	toggleX := func() core.Points { return x(app, "shell", app.Find("role:button Toggle sidebar")) }
 	if got := toggleX(); got != 80 {
@@ -107,11 +109,17 @@ func TestSidebarShell(t *testing.T) {
 		t.Fatalf("width = %v after a step, want 250", width)
 	}
 
+	laid = nil
 	app.Press("role:button Toggle sidebar")
 	if open {
 		t.Fatal("the toggle left the sidebar open")
 	}
 	app.Advance(time.Second)
+	// The layout takes the end at once and the platform plays the slide,
+	// so the content is laid out once however much it holds.
+	if len(laid) != 1 || laid[0] != 1000 {
+		t.Fatalf("content laid out at widths %v while hiding, want once at 1000", laid)
+	}
 	if got := within(app.Find("shell"), "sidebar-slot").Frame.Size.Width; got != 0 {
 		t.Fatalf("slot = %v, want closed", got)
 	}
