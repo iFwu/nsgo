@@ -36,6 +36,26 @@ const (
 	shellInsetRadius core.Points = 10
 )
 
+// The closed sidebar's peek: the pointer resting peekDwell on the
+// peekEdge points at the window's start floats the sidebar as a card
+// peekInset from the window's edges, with peekRadius corners, sliding in
+// over peekIn; the pointer moving on to the content for peekLinger sends
+// it back over peekOut.
+const (
+	peekEdge   core.Points = 8
+	peekInset  core.Points = 8
+	peekRadius core.Points = 12
+	peekDwell              = 150 * time.Millisecond
+	peekLinger             = 300 * time.Millisecond
+	peekIn                 = 260 * time.Millisecond
+	peekOut                = 180 * time.Millisecond
+)
+
+var (
+	peekInCurve  = core.Curve{X1: 0.22, Y1: 1, X2: 0.36, Y2: 1}
+	peekOutCurve = core.Curve{X1: 0.4, Y1: 0, X2: 1, Y2: 1}
+)
+
 // SidebarShell is a window of a sidebar beside the content, each under a
 // header: the sidebar's toggle stays after the window controls, the
 // app's SidebarActions end the sidebar's header, and its Header and
@@ -69,6 +89,14 @@ type SidebarShell struct {
 	OnOpenChange   func(open bool)
 	// ToggleLabel names the toggle, which shows while OnOpenChange is set.
 	ToggleLabel string
+	// Peek floats the closed sidebar over the content while it returns
+	// true: a card apart from the window's edges, sliding in from the
+	// window's start and back, the content staying where it is. It is the
+	// app's, set from OnPeekChange, which asks for the card once the
+	// pointer rests on the window's start, and to end it once the pointer
+	// moves on to the content, or opening the sidebar docks the card.
+	Peek         func() bool
+	OnPeekChange func(peek bool)
 	// Width is the sidebar's width, DefaultWidth (240 points when 0)
 	// where it is nil or 0. The user drags it between MinWidth (160 when
 	// 0) and MaxWidth (none when 0) on the handle named ResizeLabel.
@@ -179,29 +207,47 @@ func (s SidebarShell) Render(cx *core.Scope) core.Node {
 		reserve = func() core.Points { return toggleStart() - 12 + toggleSize + 8 }
 	}
 
+	peek := newSidebarPeek(cx, s, open, reveal, width)
 	sidebar := []core.Node{
-		shellHeader(cx, "sidebar-header", func() core.Points { return reserve() - margin() }, false, func() core.Color { return 0 },
-			append([]core.Node{Spacer{}}, s.SidebarActions...)),
+		// A card keeps its header level with the window controls.
+		core.View{StyleFunc: func() core.Style { return core.Style{FlexShrink: 0, Margin: core.Edges{Top: -peek.inset()}} }, Children: []core.Node{
+			shellHeader(cx, "sidebar-header", func() core.Points { return reserve() - margin() - peek.inset() }, false, func() core.Color { return 0 },
+				append([]core.Node{Spacer{}}, s.SidebarActions...)),
+		}},
 		clearOfSides(FillRest, func() core.EnvEdges { return core.EnvEdges{Left: core.EnvSafeArea} }, core.View{Style: FillRest, Children: s.Sidebar}),
 	}
 	if s.SidebarFooter != nil {
 		sidebar = append(sidebar, clearOfSides(core.Style{FlexShrink: 0}, func() core.EnvEdges { return core.EnvEdges{Left: core.EnvSafeArea} },
 			core.View{TestID: "sidebar-footer", Style: core.Style{Direction: core.Row, AlignItems: core.AlignCenter, Gap: 4, Padding: core.All(8)}, Children: s.SidebarFooter}))
 	}
-	// The slot narrows over the sidebar, which keeps its width.
+	// The slot narrows over the sidebar, which keeps its width; a card
+	// floats out of it over the content.
 	slot := core.View{TestID: "sidebar-slot", StyleFunc: func() core.Style {
-		return core.Style{Width: core.Pt(width() * reveal()), FlexShrink: 0, Overflow: core.Hidden}
-	}, Children: []core.Node{core.View{TestID: "sidebar-panel", Disabled: closed, Children: sidebar, StyleFunc: func() core.Style {
-		st := core.Style{Width: core.Pt(width()), Height: core.Pct(100), MinHeight: core.Pt(0)}
-		if !shown.Get() {
-			st.Visibility = core.VisibilityHidden
+		st := core.Style{Width: core.Pt(width() * reveal()), FlexShrink: 0, Overflow: core.Hidden}
+		if peek.float.Get() {
+			st.Overflow, st.ZIndex = core.Visible, 1
 		}
 		return st
-	}}}}
+	}, Children: []core.Node{core.View{TestID: "sidebar-panel", Children: sidebar,
+		Disabled:     func() bool { return closed() && !peek.float.Get() },
+		OnMouseEnter: peek.onCard,
+		StyleFunc: func() core.Style {
+			if peek.float.Get() {
+				return peek.card()
+			}
+			st := core.Style{Width: core.Pt(width()), Height: core.Pct(100), MinHeight: core.Pt(0)}
+			if !shown.Get() {
+				st.Visibility = core.VisibilityHidden
+			}
+			return st
+		}}}}
 
 	var right, rightHandle core.Node
 	if s.Right != nil {
 		right, rightHandle = s.rightPanel(cx)
+		r := right.(core.View)
+		r.OnMouseEnter = peek.onContent
+		right = r
 	}
 	head := []core.Node{core.View{Style: core.Style{Direction: core.Row, AlignItems: core.AlignCenter, Gap: 8,
 		FlexGrow: 1, FlexShrink: 1, MinWidth: core.Pt(0), Height: core.Pct(100), Overflow: core.Hidden}, Children: s.Header}}
@@ -209,7 +255,7 @@ func (s SidebarShell) Render(cx *core.Scope) core.Node {
 	if inset {
 		headerFill = func() core.Color { return 0 }
 	}
-	var content core.Node = core.View{TestID: "content", Style: FillRest.Merge(core.Style{Overflow: core.Hidden}), StyleFunc: Filled(colors.Background), Children: []core.Node{
+	var content core.Node = core.View{TestID: "content", Style: FillRest.Merge(core.Style{Overflow: core.Hidden}), StyleFunc: Filled(colors.Background), OnMouseEnter: peek.onContent, Children: []core.Node{
 		shellHeader(cx, "content-header", func() core.Points {
 			// The title slides with the content until it meets the toggle,
 			// where it stays.
@@ -277,7 +323,7 @@ func (s SidebarShell) Render(cx *core.Scope) core.Node {
 	}
 	children = append(children, core.View{Style: FillRest.Merge(core.Style{Direction: core.Row}), StyleFunc: func() core.Style {
 		return core.Style{Margin: core.All(margin())}
-	}, Children: row}, handle)
+	}, Children: row}, handle, peek.edge(cx))
 	if toggle != nil {
 		children = append(children, toggle)
 	}
@@ -400,6 +446,172 @@ func slideFrames(cx *core.Scope, open func() bool) (*core.Signal[bool], func() c
 		})
 	})
 	return shown, reveal.Get
+}
+
+// sidebarPeek floats the closed sidebar as a card while the app's Peek
+// says so. float is whether the panel is the card: from the peek's start
+// until the card has slid out, or docked once the sidebar opened under
+// it. slide is the card's offset from where it rests, which the platform
+// moves a frame at a time. Without Peek its hooks are nil.
+type sidebarPeek struct {
+	cx                *core.Scope
+	s                 SidebarShell
+	open              func() bool
+	reveal, width     func() core.Points
+	float             *core.Signal[bool]
+	slide             *core.AnimatedValue
+	linger            func() bool
+	onCard, onContent func(core.MouseEvent)
+}
+
+func newSidebarPeek(cx *core.Scope, s SidebarShell, open func() bool, reveal, width func() core.Points) *sidebarPeek {
+	p := &sidebarPeek{cx: cx, s: s, open: open, reveal: reveal, width: width, float: core.NewSignal(cx, false)}
+	if s.Peek == nil {
+		return p
+	}
+	p.slide = core.NewAnimatedValue(cx, 0)
+	if s.OnPeekChange != nil {
+		p.onCard = func(core.MouseEvent) { p.stay() }
+		p.onContent = func(core.MouseEvent) { p.moveOn() }
+	}
+	env := cx.Env()
+	var run *core.AnimationRun
+	move := func(to float64, d time.Duration, c core.Curve, done func()) {
+		if run != nil {
+			run.Stop()
+			run = nil
+		}
+		if env.ReduceMotion() {
+			p.slide.Set(to)
+			if done != nil {
+				done()
+			}
+			return
+		}
+		run = cx.StartAnimation(core.Timing(p.slide, to, core.TimingConfig{Duration: d, Easing: core.BezierEasing(c)}), func(finished bool) {
+			if finished && done != nil {
+				done()
+			}
+		})
+	}
+	cx.Effect(func() {
+		o, peek := open(), s.Peek()
+		cx.Untrack(func() {
+			switch float := p.float.Get(); {
+			case o && float:
+				// The card docks as the sidebar opens under it.
+				move(0, sidebarSlide, core.EaseInOut, nil)
+			case o:
+			case peek && !float:
+				p.slide.Set(-p.away())
+				p.float.Set(true)
+				move(0, peekIn, peekInCurve, nil)
+			case peek:
+				move(0, peekIn, peekInCurve, nil)
+			case float:
+				move(-p.away(), peekOut, peekOutCurve, func() { p.float.Set(false) })
+			}
+			if o && peek && s.OnPeekChange != nil {
+				s.OnPeekChange(false)
+			}
+		})
+	})
+	cx.Effect(func() {
+		if p.float.Get() && open() && reveal() >= 0.999 {
+			cx.Untrack(func() { p.float.Set(false) })
+		}
+	})
+	return p
+}
+
+// peeking is whether the app wants the card.
+func (p *sidebarPeek) peeking() bool { return p.s.Peek != nil && !p.open() && p.s.Peek() }
+
+// away is how far the card slides out, its shadow with it.
+func (p *sidebarPeek) away() float64 { return float64(p.width() + peekInset + 48) }
+
+// inset is how far the card keeps from the window's edges: less as the
+// sidebar opens under it, read in a StyleFunc.
+func (p *sidebarPeek) inset() core.Points {
+	if !p.float.Get() {
+		return 0
+	}
+	return peekInset * (1 - p.reveal())
+}
+
+// card is the panel's style as a card, which becomes the docked panel's
+// as the sidebar opens under it.
+func (p *sidebarPeek) card() core.Style {
+	colors := ColorsOf(p.cx)
+	k := float32(1 - p.reveal())
+	in := core.Pt(peekInset * core.Points(k))
+	bg := Chrome(p.cx)
+	if bg == 0 {
+		bg = colors.Background()
+	}
+	return core.Style{Position: core.Absolute, Left: in, Top: in, Bottom: in, Width: core.Pt(p.width()),
+		Background: bg, CornerRadius: peekRadius * core.Points(k), Overflow: core.Hidden,
+		Shadows: []core.BoxShadow{
+			core.Ring(1, Alpha(colors.Line(), k)),
+			{Offset: core.Point{Y: 2}, Blur: 6, Color: Black(0.06 * k)},
+			{Offset: core.Point{Y: 12}, Blur: 40, Color: Black(0.16 * k)},
+		},
+		Animated: &core.AnimatedStyle{TranslateX: p.slide}}
+}
+
+// moveOn starts sending the card back as the pointer moves on to the
+// content; stay keeps it.
+func (p *sidebarPeek) moveOn() {
+	if p.linger != nil || !p.peeking() {
+		return
+	}
+	p.linger = p.cx.AfterFunc(peekLinger, func() {
+		p.linger = nil
+		if p.peeking() {
+			p.s.OnPeekChange(false)
+		}
+	})
+}
+
+func (p *sidebarPeek) stay() {
+	if p.linger != nil {
+		p.linger()
+		p.linger = nil
+	}
+}
+
+// edge is the window's start while the sidebar is closed, where the
+// pointer resting asks for the card.
+func (p *sidebarPeek) edge(cx *core.Scope) core.Node {
+	if p.onContent == nil {
+		return nil
+	}
+	return core.Show{When: func() bool { return !p.open() }, Then: func(cx *core.Scope) core.Node {
+		var dwell func() bool
+		return core.View{TestID: "sidebar-peek-edge",
+			OnMouseEnter: func(core.MouseEvent) {
+				p.stay()
+				if dwell == nil && !p.peeking() {
+					dwell = cx.AfterFunc(peekDwell, func() {
+						dwell = nil
+						if !p.open() {
+							p.s.OnPeekChange(true)
+						}
+					})
+				}
+			},
+			OnMouseLeave: func(core.MouseEvent) {
+				if dwell != nil {
+					dwell()
+					dwell = nil
+				}
+			},
+			StyleFunc: func() core.Style {
+				in := core.Insets(cx)
+				return core.Style{Position: core.Absolute, Left: core.Pt(0), Top: core.Pt(in.Top + ShellHeaderHeight(cx)), Bottom: core.Pt(0),
+					Width: core.Pt(in.Left + peekEdge), ZIndex: 1}
+			}}
+	}}
 }
 
 // insetControls moves the window controls by margin, and returns where
