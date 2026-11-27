@@ -51,13 +51,15 @@ const (
 	peekRadius core.Points = 12
 	peekDwell              = 150 * time.Millisecond
 	peekLinger             = 300 * time.Millisecond
-	peekIn                 = 260 * time.Millisecond
-	peekOut                = 180 * time.Millisecond
+	peekIn                 = 300 * time.Millisecond
+	peekOut                = 200 * time.Millisecond
 )
 
+// The card decelerates in and accelerates out on quadratic curves, which
+// keep its first and last frames' steps close to its others'.
 var (
-	peekInCurve  = core.Curve{X1: 0.22, Y1: 1, X2: 0.36, Y2: 1}
-	peekOutCurve = core.Curve{X1: 0.4, Y1: 0, X2: 1, Y2: 1}
+	peekInCurve  = core.Curve{X1: 0.25, Y1: 0.46, X2: 0.45, Y2: 0.94}
+	peekOutCurve = core.Curve{X1: 0.55, Y1: 0.085, X2: 0.68, Y2: 0.53}
 )
 
 // SidebarShell is a window of a sidebar beside the content, each under a
@@ -173,10 +175,12 @@ func (s SidebarShell) Render(cx *core.Scope) core.Node {
 	}
 
 	inset := s.Variant == SidebarShellInset
-	// reveal is how much of the sidebar shows, from 0 to 1, moved a
-	// display frame at a time with the content's title and, in the inset
-	// variant, the margin and the window controls.
-	shown, reveal := slideFrames(cx, open)
+	// reveal is how much of the sidebar shows, from 0 to 1. The inset
+	// variant moves it a display frame at a time with the content's title,
+	// the margin and the window controls; the plain one sets it at once
+	// and lets the platform slide every frame that changes, so a slide
+	// costs the app one layout however much the content holds.
+	shown, reveal := slideFrames(cx, open, inset)
 	// margin is the inset variant's around the sidebar and the content,
 	// by which the window controls and the toggle move too.
 	margin := func() core.Points {
@@ -415,9 +419,11 @@ func slideShown(cx *core.Scope, open func() bool) *core.Signal[bool] {
 	return shown
 }
 
-// slideFrames is slideShown for a slide the shell moves itself a display
-// frame at a time: whether the sidebar is seen, and how much of it shows.
-func slideFrames(cx *core.Scope, open func() bool) (*core.Signal[bool], func() core.Points) {
+// slideFrames is slideShown for the sidebar: whether it is seen, and how
+// much of it shows. With frames the shell moves it itself a display frame
+// at a time; without, reveal takes its end at once under a layout
+// animation, which the platform plays.
+func slideFrames(cx *core.Scope, open func() bool, frames bool) (*core.Signal[bool], func() core.Points) {
 	env := cx.Env()
 	was := core.Untracked(cx, open)
 	shown := core.NewSignal(cx, was)
@@ -447,6 +453,15 @@ func slideFrames(cx *core.Scope, open func() bool) (*core.Signal[bool], func() c
 			if env.ReduceMotion() {
 				reveal.Set(to)
 				shown.Set(o)
+				return
+			}
+			if !frames {
+				cx.AnimateLayout(core.LayoutAnimation{Update: &core.LayoutTransition{Curve: core.LayoutEaseInEaseOut, Duration: sidebarSlide}})
+				reveal.Set(to)
+				if !o {
+					hide := cx.AfterFunc(sidebarSlide, func() { shown.Set(open()) })
+					stop = func() { hide() }
+				}
 				return
 			}
 			stop = cx.Animate(sidebarSlide, core.EaseInOut, func(p float64) {
@@ -564,11 +579,17 @@ func (p *sidebarPeek) card() core.Style {
 	return core.Style{Position: core.Absolute, Left: in, Top: in, Bottom: in, Width: core.Pt(p.width()),
 		Background: bg, CornerRadius: peekRadius * core.Points(k), Overflow: core.Hidden,
 		Shadows: []core.BoxShadow{
-			core.Ring(1, Alpha(colors.Line(), k)),
+			core.Ring(1, fade(colors.Line(), k)),
 			{Offset: core.Point{Y: 2}, Blur: 6, Color: Black(0.06 * k)},
 			{Offset: core.Point{Y: 12}, Blur: 40, Color: Black(0.16 * k)},
 		},
 		Animated: &core.AnimatedStyle{TranslateX: p.slide}}
+}
+
+// fade is c with its opacity scaled by k.
+func fade(c core.Color, k float32) core.Color {
+	_, _, _, a := c.Components()
+	return Alpha(c, float32(a)*k)
 }
 
 // moveOn starts sending the card back as the pointer moves on to the
