@@ -767,11 +767,13 @@ func TestEmbeddedScrollInNonScrollingHostStillBounces(t *testing.T) {
 			win.Send(sel("close"))
 			win.Send(selRelease)
 		}()
-		s := newSurface(Options{Width: 200, Height: 200}, true)
+		s := &surface{
+			native: objc.ID(classView).Send(selAlloc).Send(sel("initWithFrame:"), apple.Rect(0, 0, 200, 200)),
+			window: win, embedded: true,
+			animator: driver.NewAnimator(nil),
+		}
 		defer func() {
 			s.closed = true
-			delete(surfaces, s)
-			delete(views, s.native)
 			s.native.Send(sel("removeFromSuperview"))
 			s.native.Send(selRelease)
 		}()

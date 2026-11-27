@@ -2169,6 +2169,11 @@ func (s *surface) apply(b *driver.MountBatch) {
 	if b.LayoutAnimation != nil && !s.motionReduced() {
 		lb = &layoutBatch{Animation: b.LayoutAnimation, Created: map[driver.NodeID]bool{}, Deleted: map[objc.ID]bool{}}
 	}
+	// Row frames and their anchoring scroll must reach the display in the same transaction.
+	transaction := objc.ID(apple.Class("CATransaction"))
+	transaction.Send(sel("begin"))
+	transaction.Send(sel("setDisableActions:"), true)
+	defer transaction.Send(sel("commit"))
 	for i := range b.Items {
 		it := &b.Items[i]
 		switch it.Kind {
@@ -2674,6 +2679,10 @@ func (s *surface) apply(b *driver.MountBatch) {
 	s.revisit()
 	s.refreshSelection()
 	if s.repick {
+		// AppKit updates inserted views' backing layers in its display pass, after their frames change.
+		if window := s.native.Send(selWindow); window != 0 {
+			window.Send(sel("displayIfNeeded"))
+		}
 		s.repick = false
 		s.contentMoved(false)
 	}

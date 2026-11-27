@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Apply macOS mount batches in one Core Animation transaction and synchronize backing-layer geometry before display, keeping list replacements and anchoring scrolls from exposing partial frames.
 - Add the Android OpenGL ES 3.0 `gpu.View` backend (`GpuView.java` on `TextureView` and the shared GL thread with depth buffer, retained buffers/textures/samplers/FBOs/VAOs/pipelines, Go-side GLSL ES 3.00 pipeline compilation, off-commit binary GPU frame streaming, and `Env.SupportsGPU()` / `EventGPU` reporting) (#1109 by @houko).
 - Draw `gpu.View` pipelines with Metal on macOS and iOS, with persistent buffers, textures, samplers and bind groups, depth and multisampled surfaces, and texture and surface readback (#1105 by @houko).
 - Add package `cloud` for provider-neutral cloud key-value and file/snapshot storage (iCloud KV store and ubiquity containers on macOS and iOS, Google Play Games Saved Games bridge on Android, `ErrUnavailable` elsewhere), `core.Env.CanUseCloudStorage`, `nsgo.yaml` `cloud:`/`icloud:` Apple entitlements in `nsgo build`, and an isolated per-app in-memory cloud store in `nsgotest` with change and conflict simulation (#1241).
