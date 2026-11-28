@@ -282,6 +282,11 @@ func TestSidebarShellPeek(t *testing.T) {
 	if got := x(app, "shell", app.Find("content")); got != 0 {
 		t.Fatalf("content moved to %v under the card", got)
 	}
+	// The landed card's start takes the pointer, where the edge reached before it landed.
+	app.HoverAt("shell", driver.Point{X: peekInset + 2, Y: 400})
+	if !app.Find("sidebar-panel").Hovered || app.Find("sidebar-peek-edge").Hovered {
+		t.Fatal("the edge covers the landed card's start")
+	}
 	app.Press("role:button Inbox")
 	if pressed != 1 {
 		t.Fatal("the card took no press")

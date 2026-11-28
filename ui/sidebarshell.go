@@ -40,21 +40,22 @@ const (
 // peekEdge points at the window's start floats the sidebar as a card
 // peekInset from the window's edges, with peekRadius corners, sliding in
 // over peekIn; the pointer moving on to the content for peekLinger sends
-// it back over peekOut.
+// it back over peekOut. Once the card has landed, the edge keeps to the
+// gap before it, so the card's own start takes the pointer.
 const (
-	peekEdge   core.Points = 8
+	peekEdge   core.Points = 16
 	peekInset  core.Points = 8
 	peekRadius core.Points = 12
-	peekDwell              = 150 * time.Millisecond
-	peekLinger             = 300 * time.Millisecond
-	peekIn                 = 300 * time.Millisecond
-	peekOut                = 200 * time.Millisecond
+	peekDwell              = 100 * time.Millisecond
+	peekLinger             = 400 * time.Millisecond
+	peekIn                 = 180 * time.Millisecond
+	peekOut                = 140 * time.Millisecond
 )
 
-// The card decelerates in and accelerates out on quadratic curves, which
-// keep its first and last frames' steps close to its others'.
+// The card decelerates in on a cubic curve, which covers most of the way
+// in its first frames, and accelerates out on a quadratic one.
 var (
-	peekInCurve  = core.Curve{X1: 0.25, Y1: 0.46, X2: 0.45, Y2: 0.94}
+	peekInCurve  = core.Curve{X1: 0.33, Y1: 1, X2: 0.68, Y2: 1}
 	peekOutCurve = core.Curve{X1: 0.55, Y1: 0.085, X2: 0.68, Y2: 0.53}
 )
 
@@ -473,14 +474,14 @@ type sidebarPeek struct {
 	s                 SidebarShell
 	open              func() bool
 	reveal, width     func() core.Points
-	float             *core.Signal[bool]
+	float, landed     *core.Signal[bool]
 	slide             *core.AnimatedValue
 	linger            func() bool
 	onCard, onContent func(core.MouseEvent)
 }
 
 func newSidebarPeek(cx *core.Scope, s SidebarShell, open func() bool, reveal, width func() core.Points) *sidebarPeek {
-	p := &sidebarPeek{cx: cx, s: s, open: open, reveal: reveal, width: width, float: core.NewSignal(cx, false)}
+	p := &sidebarPeek{cx: cx, s: s, open: open, reveal: reveal, width: width, float: core.NewSignal(cx, false), landed: core.NewSignal(cx, false)}
 	if s.Peek == nil {
 		return p
 	}
@@ -509,9 +510,13 @@ func newSidebarPeek(cx *core.Scope, s SidebarShell, open func() bool, reveal, wi
 			}
 		})
 	}
+	land := func() { p.landed.Set(true) }
 	cx.Effect(func() {
 		o, peek := open(), s.Peek()
 		cx.Untrack(func() {
+			if o || !peek {
+				p.landed.Set(false)
+			}
 			switch float := p.float.Get(); {
 			case o && float:
 				// The card docks as the sidebar opens under it.
@@ -520,9 +525,9 @@ func newSidebarPeek(cx *core.Scope, s SidebarShell, open func() bool, reveal, wi
 			case peek && !float:
 				p.slide.Set(-p.away())
 				p.float.Set(true)
-				move(0, peekIn, peekInCurve, nil)
+				move(0, peekIn, peekInCurve, land)
 			case peek:
-				move(0, peekIn, peekInCurve, nil)
+				move(0, peekIn, peekInCurve, land)
 			case float:
 				move(-p.away(), peekOut, peekOutCurve, func() { p.float.Set(false) })
 			}
@@ -602,7 +607,7 @@ func (p *sidebarPeek) stay() {
 }
 
 // edge is the window's start while the sidebar is closed, where the
-// pointer resting asks for the card.
+// pointer resting asks for the card, and the gap before the landed card.
 func (p *sidebarPeek) edge(cx *core.Scope) core.Node {
 	if p.onContent == nil {
 		return nil
@@ -629,8 +634,12 @@ func (p *sidebarPeek) edge(cx *core.Scope) core.Node {
 			},
 			StyleFunc: func() core.Style {
 				in := core.Insets(cx)
+				reach := peekEdge
+				if p.landed.Get() {
+					reach = peekInset
+				}
 				return core.Style{Position: core.Absolute, Left: core.Pt(0), Top: core.Pt(in.Top + ShellHeaderHeight(cx)), Bottom: core.Pt(0),
-					Width: core.Pt(in.Left + peekEdge), ZIndex: 1}
+					Width: core.Pt(in.Left + reach), ZIndex: 1}
 			}}
 	}}
 }
