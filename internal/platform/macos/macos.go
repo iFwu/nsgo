@@ -86,8 +86,8 @@ type view struct {
 	clipHeld  bool
 	holderFit bool
 	events    driver.EventMask
-	// over says the view reported the mouse over it: in its tracking
-	// area, and no view above covers it there.
+	// over says the view reported the mouse over it: the hit test finds
+	// the mouse on it, no view above covering it there.
 	over bool
 	// backdrop is the view's backdrop: Liquid Glass when glass, a holder of backdropLayer, a CABackdropLayer drawing the backdrop filters, when gaussian, else an NSVisualEffectView of a material.
 	backdrop, backdropLayer objc.ID
@@ -273,7 +273,7 @@ type surface struct {
 	batches          queue.Batches
 	views            []*view            // index is NodeID
 	movers           map[*view]struct{} // views following mouse moves
-	inside           map[*view]struct{} // views whose tracking areas hold the mouse
+	inside           map[*view]struct{} // views the mouse is over, and those a tracking area just reported it in
 	webOver          *view              // web view under the pointer, left when covered and nudged when uncovered
 	webs             map[*view]struct{} // web views, whose tracking area owners pick keeps filtered (guardWebTracking)
 	root             driver.NodeID      // the root view's, which the batches name
@@ -3415,7 +3415,7 @@ func (s *surface) pick(loc apple.CGPoint, always, moving bool) {
 func (s *surface) pickHit(hit, up objc.ID, loc apple.CGPoint, always, moving bool) {
 	for v := range s.inside {
 		over := covers(v, hit)
-		if !over && s.kind == driver.SurfacePanel {
+		if !over {
 			delete(s.inside, v)
 		}
 		switch {
@@ -3428,19 +3428,20 @@ func (s *surface) pickHit(hit, up objc.ID, loc apple.CGPoint, always, moving boo
 		}
 		v.over = !v.over
 	}
-	if s.kind == driver.SurfacePanel {
-		// Frame changes can put views under a resting pointer before
-		// AppKit sends a tracking-area entry. Follow the native hit's
-		// ancestors, including scroll views' own tracking areas.
-		for n := hit; n != 0 && n != up; n = n.Send(selSuperview) {
-			if v := views[n]; v != nil && v.native == n && v.hover != 0 && !v.over {
-				s.inside[v] = struct{}{}
-				v.over = true
-				if v.sc != nil {
-					v.hovered(loc)
-				}
-				v.mouseAt(driver.EventMouseEnter, loc)
+	// AppKit sends no tracking-area entry to a view drawn outside a view
+	// around it, such as a card floating out of a collapsed sidebar's
+	// zero-width slot, where the hit test finds it, and a panel's frame
+	// changes can put views under a resting pointer before it sends one.
+	// Follow the native hit's ancestors, including scroll views' own
+	// tracking areas.
+	for n := hit; n != 0 && n != up; n = n.Send(selSuperview) {
+		if v := views[n]; v != nil && v.native == n && v.hover != 0 && !v.over {
+			s.inside[v] = struct{}{}
+			v.over = true
+			if v.sc != nil {
+				v.hovered(loc)
 			}
+			v.mouseAt(driver.EventMouseEnter, loc)
 		}
 	}
 	// WebKit may add tracking areas after the web view was configured, as it joins the window.
@@ -3899,6 +3900,13 @@ func mouseExited(self objc.ID, _ objc.SEL, event objc.ID) {
 	}
 	if event != 0 && v.surface.kind == driver.SurfacePanel {
 		v.surface.repickPanel()
+		return
+	}
+	if event != 0 {
+		// The hit test decides what the pointer left: it may have moved on
+		// to a child drawn outside v, and the views AppKit does not track
+		// (pickHit) leave with the pointer as it goes out of the window.
+		v.surface.pick(objc.Send[apple.CGPoint](event, selLocationInWindow), false, false)
 		return
 	}
 	delete(v.surface.inside, v)

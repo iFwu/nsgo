@@ -3,10 +3,14 @@
 package macos
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/ebitengine/purego/objc"
 
+	"github.com/nsgo-dev/nsgo/core"
+	"github.com/nsgo-dev/nsgo/internal/driver"
+	"github.com/nsgo-dev/nsgo/internal/engine"
 	"github.com/nsgo-dev/nsgo/internal/platform/apple"
 )
 
@@ -55,6 +59,75 @@ func TestClicksRestartOnAnotherView(t *testing.T) {
 			if got := objc.Send[int](s.restartClicks(event), sel("clickCount")); got != c.delivered {
 				t.Errorf("event %d at %v: clickCount %d, want %d", i, c.x, got, c.delivered)
 			}
+		}
+	})
+}
+
+// A view drawn outside its parent, as a card floating out of a collapsed sidebar's zero-width slot is, hears the
+// pointer come and go where the hit test finds it: AppKit sends its tracking area no entry there.
+func TestWindowHoversViewOutsideItsParent(t *testing.T) {
+	onMain(func() {
+		loadAppKit()
+		pool := objc.ID(apple.Class("NSAutoreleasePool")).Send(selNew)
+		defer pool.Send(sel("drain"))
+		var heard []driver.EventKind
+		eng := engine.Start(actionEngine{}, func(*core.Scope) core.Node { return core.View{} }, engine.Options{Event: func(_ uint32, e driver.Event) {
+			if e.Kind == driver.EventMouseEnter || e.Kind == driver.EventMouseLeave {
+				heard = append(heard, e.Kind)
+			}
+		}})
+		defer eng.Close()
+		window := objc.ID(classWindow).Send(selAlloc).Send(sel("initWithContentRect:styleMask:backing:defer:"),
+			apple.Rect(0, 0, 300, 200), uint(0), uint(2), false)
+		window.Send(sel("setReleasedWhenClosed:"), false)
+		s := newSurface(Options{Width: 300, Height: 200}, false)
+		s.engine = eng
+		s.views = make([]*view, 3)
+		s.animator = driver.NewAnimator(func(driver.Event) {})
+		s.window = window
+		window.Send(sel("setContentView:"), s.native)
+		defer func() {
+			s.close()
+			delete(views, s.native)
+			s.native.Send(selRelease)
+			window.Send(sel("close"))
+			window.Send(selRelease)
+		}()
+
+		slot := s.create(driver.KindView, 1)
+		s.views[1] = slot
+		slot.native.Send(selSetFrame, apple.Rect(0, 0, 0, 200))
+		slot.frame, slot.framed = driver.Bounds{Size: driver.Size{Height: 200}}, true
+		slot.overflow = driver.Bounds{Size: driver.Size{Width: 120, Height: 200}}
+		s.native.Send(selAddSubview, slot.native)
+		card := s.create(driver.KindView, 2)
+		s.views[2], card.up = card, slot
+		card.native.Send(selSetFrame, apple.Rect(0, 0, 120, 200))
+		card.frame, card.framed = driver.Bounds{Size: driver.Size{Width: 120, Height: 200}}, true
+		slot.childHost().Send(selAddSubview, card.native)
+		card.setEvents(1<<driver.EventMouseEnter | 1<<driver.EventMouseLeave)
+		defer func() {
+			s.delete(card, false)
+			s.delete(slot, false)
+		}()
+
+		toWin := func(x, y float64) apple.CGPoint {
+			return objc.Send[apple.CGPoint](s.native, sel("convertPoint:toView:"), apple.CGPoint{X: x, Y: y}, objc.ID(0))
+		}
+		on, off := toWin(60, 100), toWin(200, 100)
+		if !covers(card, s.hitAt(on)) {
+			t.Fatal("the hit test misses the card outside its slot")
+		}
+		s.pick(on, true, true)
+		if fmt.Sprint(heard) != fmt.Sprint([]driver.EventKind{driver.EventMouseEnter}) {
+			t.Fatalf("the pointer coming onto the card reported %v, want an enter", heard)
+		}
+		s.pick(off, true, true)
+		if fmt.Sprint(heard) != fmt.Sprint([]driver.EventKind{driver.EventMouseEnter, driver.EventMouseLeave}) {
+			t.Fatalf("the pointer leaving the card reported %v, want an enter and a leave", heard)
+		}
+		if _, in := s.inside[card]; in || card.over {
+			t.Fatal("the card stayed hovered once the pointer left it")
 		}
 	})
 }
